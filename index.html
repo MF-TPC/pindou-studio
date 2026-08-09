@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>拼豆工作室 — Pindou Studio</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23e8724a'/><circle cx='12' cy='12' r='3' fill='%23fff' opacity='.5'/></svg>">
+</head>
+<body>
+
+<header class="app-header">
+  <button class="panel-toggle" id="toggle-left" title="左侧面板">☰</button>
+  <span class="logo">拼豆工作室</span>
+  <div class="mode-tabs">
+    <button class="mode-tab active" id="tab-convert">🎨 转换</button>
+    <button class="mode-tab" id="tab-assist">📍 辅助</button>
+  </div>
+  <button class="panel-toggle" id="toggle-right" title="右侧面板">◫</button>
+  <span class="subtitle">Pindou Studio</span>
+</header>
+
+<div class="app-body">
+
+  <!-- ================================================================ -->
+  <!-- 左侧: 转换模式面板 -->
+  <!-- ================================================================ -->
+  <aside class="panel-left" id="conv-panel">
+
+    <!-- 导入 -->
+    <div class="panel-section">
+      <div class="section-title">📥 导入图片</div>
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-icon">🖼️</div>
+        拖拽到此处<br><strong>或点击选择文件</strong><br>
+        <small>也支持 Ctrl+V 粘贴</small>
+      </div>
+      <input type="file" id="file-input" accept="image/*" hidden>
+      <button class="btn btn-block btn-sm" id="upload-btn" style="margin-top:6px">📁 选择文件</button>
+      <button class="btn btn-block btn-sm btn-accent" id="import-pattern-btn" style="margin-top:4px">🔍 导入拼豆图纸</button>
+      <button class="btn btn-block btn-sm" id="crop-btn" style="margin-top:3px">✂️ 裁剪图纸</button>
+    </div>
+
+    <!-- 色板 & 尺寸 -->
+    <div class="panel-section">
+      <div class="section-title">🎨 色板 & 算法</div>
+      <div class="form-group">
+        <label class="form-label">品牌色板</label>
+        <select id="palette-select">
+          <option value="mard-221">MARD 221色 (A-H+M)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">匹配算法</label>
+        <select id="match-algo">
+          <option value="median-cut" selected>Median Cut (简约,颜色少)</option>
+          <option value="lab-cluster">Lab 轻度聚类 (平衡)</option>
+          <option value="direct">直接 Lab 匹配 (细节多)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">目标尺寸 (宽 × 高)</label>
+        <div class="form-row">
+          <input type="number" id="width-input" value="58" min="1" max="500">
+          <span class="dim-sep">×</span>
+          <input type="number" id="height-input" value="58" min="1" max="500">
+          <button class="lock-btn" id="aspect-lock">🔓</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 显示模式 -->
+    <div class="panel-section">
+      <div class="section-title">👁️ 显示模式</div>
+      <div class="style-toggle">
+        <button id="style-symbol" class="active">符号</button>
+        <button id="style-solid">纯色块</button>
+      </div>
+      <div class="toggle-row" style="margin-top:10px">
+        <span class="toggle-label">网格线</span>
+        <label class="toggle-switch"><input type="checkbox" id="grid-toggle" checked><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <!-- 裁剪 -->
+    <div class="panel-section" id="crop-section" style="display:none">
+      <div class="section-title">✂️ 裁剪图纸</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><label class="form-label">左列</label><input type="number" id="crop-left" value="0" min="0"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">右列</label><input type="number" id="crop-right" value="0" min="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1"><label class="form-label">上行</label><input type="number" id="crop-top" value="0" min="0"></div>
+        <div class="form-group" style="flex:1"><label class="form-label">下行</label><input type="number" id="crop-bottom" value="0" min="0"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin:4px 0">拖拽蓝色选框调整，或手动输入数值</div>
+      <button class="btn btn-accent btn-block btn-sm" id="crop-apply">确认裁剪</button>
+      <button class="btn btn-sm btn-block" id="crop-cancel" style="margin-top:3px">取消</button>
+    </div>
+
+    <!-- 导出 -->
+    <div class="panel-section">
+      <div class="section-title">💾 导出</div>
+      <button class="btn btn-primary btn-block" id="export-png">📥 下载 PNG</button>
+      <button class="btn btn-block" id="export-print" style="margin-top:6px">🖨️ 打印图纸</button>
+      <div class="form-row" style="margin-top:6px">
+        <button class="btn btn-sm" id="export-json" style="flex:1">💾 JSON</button>
+        <button class="btn btn-sm" id="import-json" style="flex:1">📂 导入</button>
+        <button class="btn btn-sm" id="copy-clip">📋</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================================================================ -->
+  <!-- 左侧: 辅助模式面板 -->
+  <!-- ================================================================ -->
+  <aside class="panel-left hidden" id="asst-panel">
+
+    <!-- 板子设置 -->
+    <div class="panel-section">
+      <div class="section-title">📐 拼豆板参数</div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label class="form-label">板宽</label>
+          <input type="number" id="board-width" value="58" min="10" max="200">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label class="form-label">板高</label>
+          <input type="number" id="board-height" value="29" min="10" max="200">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">红线间距</label>
+        <div class="range-row">
+          <input type="range" id="guide-spacing" min="2" max="12" value="5">
+          <span class="range-val" id="guide-spacing-label">5格</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">起始偏移</label>
+        <div class="range-row">
+          <input type="range" id="guide-offset" min="0" max="10" value="0">
+          <span class="range-val" id="guide-offset-label">0格</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">预设</label>
+        <select id="guide-presets">
+          <option value="-1">自定义</option>
+          <option value="0" selected>5格标准</option>
+          <option value="1">4格小间距</option>
+          <option value="2">6格大间距</option>
+          <option value="3">3格密线</option>
+          <option value="4">偏移一格</option>
+          <option value="5">偏移两格</option>
+        </select>
+      </div>
+      <canvas id="board-preview" width="174" height="174" class="board-preview-canvas"></canvas>
+      <button class="btn btn-accent btn-block btn-sm" id="apply-board" style="margin-top:4px">应用板子设置</button>
+    </div>
+
+    <!-- 导入图纸 -->
+    <div class="panel-section">
+      <div class="section-title">📥 导入图纸</div>
+      <button class="btn btn-block btn-sm" id="asst-import-img">🖼️ 从图纸图片导入</button>
+      <button class="btn btn-block btn-sm" id="asst-from-conv" style="margin-top:4px">🔄 从转换结果导入</button>
+    </div>
+
+    <!-- 批次控制 -->
+    <div class="panel-section" id="batch-section">
+      <div class="section-title">📍 当前批次</div>
+      <div class="batch-current">
+        <div class="batch-color-name" id="batch-color" style="font-size:18px;font-weight:700">—</div>
+        <div class="batch-info-row">
+          <span class="batch-label">本批数量:</span>
+          <span id="batch-count" style="font-weight:700">0</span>
+        </div>
+        <div class="batch-info-row">
+          <span class="batch-label">进度:</span>
+          <span id="batch-progress" style="font-size:12px;color:var(--color-text-dim)">—</span>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-block" id="btn-advance" style="margin-top:8px">✅ 本批完成, 下一批</button>
+      <button class="btn btn-sm btn-block" id="btn-revert" style="margin-top:4px">↩ 撤销上一批</button>
+      <button class="btn btn-sm btn-block btn-accent" id="btn-focus" style="margin-top:4px">🎯 专注模式 (F)</button>
+    </div>
+
+    <!-- 批次概览 -->
+    <div class="panel-section">
+      <div class="section-title">📋 所有批次</div>
+      <ul class="batch-overview" id="batch-list">
+        <li style="color:var(--color-text-dim);font-size:12px">请先导入图纸</li>
+      </ul>
+    </div>
+
+    <!-- 孤立点 -->
+    <div class="panel-section">
+      <div class="section-title">📍 偏远孤立点</div>
+      <ul class="iso-list" id="iso-list">
+        <li class="iso-none">请先导入图纸</li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- ================================================================ -->
+  <!-- 中间: Canvas -->
+  <!-- ================================================================ -->
+  <main class="canvas-area" id="canvas-area">
+    <div id="canvas-wrap">
+      <canvas id="preview-canvas" width="400" height="280"></canvas>
+    </div>
+    <div class="zoom-controls">
+      <button id="zoom-out" title="缩小">−</button>
+      <span id="zoom-label">100%</span>
+      <button id="zoom-in" title="放大">+</button>
+      <button id="zoom-reset" title="重置">↺</button>
+      <button id="btn-fit" title="适应窗口">⊡</button>
+    </div>
+  </main>
+
+  <!-- ================================================================ -->
+  <!-- 右侧: 统计 & 图例 -->
+  <!-- ================================================================ -->
+  <aside class="panel-right hidden" id="stats-panel">
+    <div class="panel-section">
+      <div class="section-title">📊 用料统计</div>
+      <div class="stat-numbers">
+        <div class="stat-item"><div class="stat-value" id="total-beads">0</div><div class="stat-label">总颗数</div></div>
+        <div class="stat-item"><div class="stat-value" id="total-colors">0</div><div class="stat-label">颜色数</div></div>
+        <div class="stat-item"><div class="stat-value" id="total-boards">0</div><div class="stat-label">板子数</div></div>
+      </div>
+    </div>
+    <div class="panel-section">
+      <div class="section-title">🎨 颜色图例</div>
+      <ul class="legend-list" id="legend-list">
+        <li style="color:var(--color-text-dim);font-size:12px;padding:8px">请先导入图片</li>
+      </ul>
+    </div>
+  </aside>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Scripts -->
+<!-- ========== 专注模式 ========== -->
+<div class="focus-overlay hidden" id="focus-overlay">
+  <button class="focus-btn-exit" id="focus-exit">✕ 退出专注 (Esc)</button>
+  <div class="focus-canvas-wrap" id="focus-canvas-wrap">
+    <canvas id="focus-canvas"></canvas>
+  </div>
+  <div class="focus-bar">
+    <button class="btn" id="focus-zoom-out" style="min-width:36px">−</button>
+    <span style="color:#ccc;font-size:11px;min-width:40px;text-align:center" id="focus-zoom-label">100%</span>
+    <button class="btn" id="focus-zoom-in" style="min-width:36px">+</button>
+    <button class="btn" id="focus-zoom-fit" style="min-width:44px;font-size:11px">⊡</button>
+    <button class="btn" id="focus-revert">↩ 撤销</button>
+    <div class="focus-info">
+      <div class="focus-color" id="focus-color">—</div>
+      <div id="focus-progress">—</div>
+    </div>
+    <button class="btn btn-primary" id="focus-advance">✅ 下一批</button>
+  </div>
+</div>
+
+<script src="js/colormatch.js"></script>
+<script src="js/palettes.js"></script>
+<script src="js/dither.js"></script>
+<script src="js/converter.js"></script>
+<script src="js/resizer.js"></script>
+<script src="js/board.js"></script>
+<script src="js/importer.js"></script>
+<script src="js/assistant.js"></script>
+<script src="js/renderer.js"></script>
+<script src="js/exporter.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
