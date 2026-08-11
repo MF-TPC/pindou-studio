@@ -100,16 +100,28 @@ function createRenderer() {
           ctx.fillStyle = 'rgba(255,255,255,0.88)';
           ctx.fillRect(cx, cy, cs, cs);
         } else if (s === 2) {
-          var r2 = Math.floor(cell.rgb[0] * 0.6);
-          var g2 = Math.floor(cell.rgb[1] * 0.6);
-          var b2 = Math.floor(cell.rgb[2] * 0.6);
+          var r2 = Math.floor(cell.rgb[0] * 0.82);
+          var g2 = Math.floor(cell.rgb[1] * 0.82);
+          var b2 = Math.floor(cell.rgb[2] * 0.82);
           ctx.fillStyle = 'rgb(' + r2 + ',' + g2 + ',' + b2 + ')';
           ctx.fillRect(cx, cy, cs, cs);
+          // 白勾
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, cs * 0.12);
+          ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
+          ctx.moveTo(cx + cs * 0.22, cy + cs * 0.52);
+          ctx.lineTo(cx + cs * 0.44, cy + cs * 0.74);
+          ctx.lineTo(cx + cs * 0.78, cy + cs * 0.26);
+          ctx.stroke();
         } else if (s === 3) {
-          ctx.fillStyle = '#dc2828';
+          ctx.fillStyle = '#22cc44';
           ctx.fillRect(cx, cy, cs, cs);
-          ctx.strokeStyle = '#ff4444'; ctx.lineWidth = Math.max(2, cs * 0.14);
+          ctx.strokeStyle = '#00e640'; ctx.lineWidth = Math.max(2, cs * 0.14);
           ctx.strokeRect(cx + 1.5, cy + 1.5, cs - 3, cs - 3);
+          // 小标记 ●
+          if (cs >= 12) {
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.arc(cx + cs/2, cy + cs/2, cs * 0.15, 0, Math.PI*2); ctx.fill();
+          }
         }
       }
     }

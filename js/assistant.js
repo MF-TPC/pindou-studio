@@ -140,7 +140,7 @@ function createAssistant(colorMatrix, boardConfig, shiftX, shiftY) {
 
   return {
     statusMatrix, paddedMatrix: getPaddedMatrix(),
-    advanceBatch, revertBatch, toggleCell,
+    advanceBatch, revertBatch, toggleCell, moveBatch,
     getCurrentBatch, getBatchOverview,
     getStatusMatrix, getIsolated, getPaddedMatrix,
     batches,

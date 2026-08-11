@@ -176,6 +176,7 @@
     $('#export-json').addEventListener('click', handleExportJSON);
     $('#import-json').addEventListener('click', handleImportJSON);
     $('#copy-clip').addEventListener('click', handleCopyClip);
+    $('#edit-undo').addEventListener('click', undoEdit);
 
     // Board
     $('#guide-spacing').addEventListener('input', () => {
@@ -221,8 +222,11 @@
     function shiftPattern(dx, dy) {
       if (!S.assistant) return;
       S.shiftX += dx; S.shiftY += dy;
+      var area = $('#canvas-area');
+      var sx = area.scrollLeft, sy = area.scrollTop;
       S.assistant = createAssistant(S.colorMatrix, S.boardConfig, S.shiftX, S.shiftY);
       renderAssist(); updateAssistUI();
+      area.scrollLeft = sx; area.scrollTop = sy;
     }
     $('#shift-up').addEventListener('click', function() { shiftPattern(0, -1); });
     $('#shift-down').addEventListener('click', function() { shiftPattern(0, 1); });
@@ -516,6 +520,11 @@
         var b = overview[bi];
         var li = document.createElement('li');
         li.className = 'batch-ov-item batch-ov-' + b.status;
+        if (b.status === 'pending') {
+          li.draggable = true;
+          li.setAttribute('data-batch-idx', b.index);
+          li.style.cursor = 'grab';
+        }
         var btns = '';
         if (b.status === 'pending') {
           btns = '<span class="bo-arrows">' +
@@ -527,7 +536,7 @@
           '<span>' + b.colorName + '</span><span class="bo-count">' + b.count + '颗</span>' + btns;
         bl.appendChild(li);
       }
-      // 绑定排序按钮
+      // 排序按钮
       var arrs = bl.querySelectorAll('.bo-arr');
       for (var ai = 0; ai < arrs.length; ai++) {
         arrs[ai].addEventListener('click', function(e) {
@@ -536,6 +545,28 @@
           var to = parseInt(this.getAttribute('data-to'));
           S.assistant.moveBatch(from, to);
           assistBatchMoved();
+        });
+      }
+      // 拖拽排序
+      var items = bl.querySelectorAll('[draggable]');
+      var dragFrom = null;
+      for (var di = 0; di < items.length; di++) {
+        items[di].addEventListener('dragstart', function(e) {
+          dragFrom = parseInt(this.getAttribute('data-batch-idx'));
+          this.style.opacity = '0.5';
+        });
+        items[di].addEventListener('dragend', function(e) {
+          this.style.opacity = '1';
+        });
+        items[di].addEventListener('dragover', function(e) { e.preventDefault(); });
+        items[di].addEventListener('drop', function(e) {
+          e.preventDefault();
+          var to = parseInt(this.getAttribute('data-batch-idx'));
+          if (dragFrom !== null && dragFrom !== to) {
+            S.assistant.moveBatch(dragFrom, to);
+            assistBatchMoved();
+          }
+          dragFrom = null;
         });
       }
     }
