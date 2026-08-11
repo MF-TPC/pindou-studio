@@ -39,7 +39,16 @@
       <button class="btn btn-block btn-sm" id="upload-btn" style="margin-top:6px">📁 选择文件</button>
       <button class="btn btn-block btn-sm btn-accent" id="import-pattern-btn" style="margin-top:4px">🔍 导入拼豆图纸</button>
       <button class="btn btn-block btn-sm" id="crop-btn" style="margin-top:3px">✂️ 裁剪图纸</button>
+      <div class="form-row" style="margin-top:3px">
+        <button class="btn btn-sm" id="flip-h" style="flex:1">↔ 水平翻转</button>
+        <button class="btn btn-sm" id="flip-v" style="flex:1">↕ 垂直翻转</button>
+      </div>
       <button class="btn btn-block btn-sm" id="edit-undo" style="margin-top:3px">↩ 撤销编辑 (Ctrl+Z)</button>
+      <button class="btn btn-block btn-sm btn-accent" id="save-to-vault" style="margin-top:3px">💾 保存到仓库</button>
+      <div class="panel-section" id="vault-section" style="margin-top:8px;display:none">
+        <div class="section-title">📦 图纸仓库</div>
+        <ul class="vault-list" id="vault-list"></ul>
+      </div>
     </div>
 
     <!-- 色板 & 尺寸 -->

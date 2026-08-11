@@ -69,10 +69,33 @@ function importPatternImage(img, labPalette, converter) {
 
   var d = bestResult;
   var matrix = buildMatrix(d.codes, d.rows, d.cols, converter || null);
+
+  // 校验: 图例数量 vs 识别数量
+  var validation = null;
+  if (legend.length >= 2) {
+    var recCounts = {};
+    for (var ry = 0; ry < d.rows; ry++)
+      for (var rx = 0; rx < d.cols; rx++)
+        if (d.codes[ry] && d.codes[ry][rx]) recCounts[d.codes[ry][rx]] = (recCounts[d.codes[ry][rx]] || 0) + 1;
+
+    var mismatches = [];
+    for (var li = 0; li < legend.length; li++) {
+      var le = legend[li];
+      if (le.qty) {
+        var rec = recCounts[le.id] || 0;
+        if (Math.abs(rec - le.qty) > le.qty * 0.05) {
+          mismatches.push({ id: le.id, expected: le.qty, recognized: rec });
+        }
+      }
+    }
+    if (mismatches.length > 0) validation = mismatches;
+  }
+
   return {
     matrix: matrix,
     confidence: d.confidence,
     details: { rows: d.rows, cols: d.cols, cellSize: d.cellSize, ocrHits: d.ocrHits, colorHits: d.colorHits, agree: d.agree, legendSize: legend.length },
+    validation: validation,
   };
 }
 
@@ -265,34 +288,75 @@ function extractComponentFeature(bw, side, comp) {
 // ============ 图例解析 ============
 
 function parseLegend(ctx, roi, labPalette) {
-  // 扫描图像底部的色块
-  // 简易策略: 找独立颜色方块 + 紧邻文字 → 色号对照
-  const legend = [];
-  const bottomY = Math.floor(roi.h * 0.85);
-  const step = 5;
+  var legend = [];
+  var bottomY = Math.floor(roi.h * 0.82);
+  var step = 5;
 
-  let lastColor = null;
-  for (let y = bottomY; y < roi.h - 5; y += step) {
-    for (let x = 10; x < Math.min(roi.w - 10, 300); x += step) {
-      const p = ctx.getImageData(x, y, 3, 3);
-      const samples = [];
-      for (let i = 0; i < p.data.length; i += 4) {
+  for (var y = bottomY; y < roi.h - 5; y += step) {
+    for (var x = 10; x < Math.min(roi.w - 10, 400); x += step) {
+      var p = ctx.getImageData(x, y, 3, 3);
+      var samples = [];
+      for (var i = 0; i < p.data.length; i += 4) {
         if (p.data[i + 3] >= 128) samples.push([p.data[i], p.data[i + 1], p.data[i + 2]]);
       }
       if (samples.length < 5) continue;
-      const med = medianColor(samples);
-      const matched = matchLab(med, labPalette);
+      var med = medianColor(samples);
+      var matched = matchLab(med, labPalette);
       if (matched) {
-        if (lastColor !== matched.id) {
-          legend.push({ id: matched.id, rgb: matched.rgb, hex: matched.hex });
-          lastColor = matched.id;
-        }
+        // 避免重复
+        if (legend.length > 0 && legend[legend.length - 1].id === matched.id) break;
+        // 读取该色块右侧的数字 (数量)
+        var qty = readNumberNear(ctx, x + 30, y - 4, 40, 16, roi);
+        legend.push({ id: matched.id, rgb: matched.rgb, hex: matched.hex, qty: qty });
+        x += 30;
+        break;
       }
-      x += 20; // 跳到下一个色块
     }
-    y += 20; // 跳行
+    if (legend.length >= 3) break; // 找到足够图例就停
   }
   return legend;
+}
+
+/** 在指定区域读取数字 */
+function readNumberNear(ctx, sx, sy, w, h, roi) {
+  if (sx + w > roi.w) return null;
+  var imgData = ctx.getImageData(sx, sy, w, h);
+  var gray = [];
+  for (var i = 0; i < imgData.data.length; i += 4) {
+    gray.push(imgData.data[i] * 0.299 + imgData.data[i + 1] * 0.587 + imgData.data[i + 2] * 0.114);
+  }
+  var th = otsuThreshold(gray);
+  var bw = gray.map(function(v) { return v < th ? 1 : 0; });
+  var comps = findConnectedComponents(bw, w);
+  // 过滤小噪点，取宽度合理的连通域
+  var chars = [];
+  for (var ci = 0; ci < comps.length; ci++) {
+    var c = comps[ci];
+    var xs = c.pixels.map(function(p) { return p[0]; });
+    var cw = Math.max.apply(null, xs) - Math.min.apply(null, xs) + 1;
+    if (c.size >= 10 && cw >= 3) {
+      chars.push({ comp: c, cx: c.cx });
+    }
+  }
+  chars.sort(function(a, b) { return a.cx - b.cx; });
+
+  // 匹配数字
+  var templates = getTemplates(20);
+  var result = '';
+  for (var di = 0; di < Math.min(chars.length, 5); di++) {
+    var feat = extractComponentFeature(bw, w, chars[di].comp);
+    var best = null, bestScore = Infinity;
+    for (var ti = 0; ti < 10; ti++) {
+      var dch = String(ti);
+      var tf = templates[dch];
+      if (!tf) continue;
+      var score = 0;
+      for (var fi = 0; fi < tf.length; fi++) { if (feat[fi] !== tf[fi]) score++; }
+      if (score < bestScore && score < tf.length * 0.4) { bestScore = score; best = dch; }
+    }
+    if (best) result += best;
+  }
+  return result ? parseInt(result) : null;
 }
 
 // ============ 交叉验证 ============

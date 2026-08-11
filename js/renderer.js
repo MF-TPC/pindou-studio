@@ -100,17 +100,16 @@ function createRenderer() {
           ctx.fillStyle = 'rgba(255,255,255,0.88)';
           ctx.fillRect(cx, cy, cs, cs);
         } else if (s === 2) {
-          var r2 = Math.floor(cell.rgb[0] * 0.82);
-          var g2 = Math.floor(cell.rgb[1] * 0.82);
-          var b2 = Math.floor(cell.rgb[2] * 0.82);
-          ctx.fillStyle = 'rgb(' + r2 + ',' + g2 + ',' + b2 + ')';
+          // 已完成 — 原色 + 白色蒙版(略深一点点) + 白勾
+          ctx.fillStyle = cell.hex;
           ctx.fillRect(cx, cy, cs, cs);
-          // 白勾
-          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, cs * 0.12);
+          ctx.fillStyle = 'rgba(0,0,0,0.10)';
+          ctx.fillRect(cx, cy, cs, cs);
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, cs * 0.14);
           ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.beginPath();
-          ctx.moveTo(cx + cs * 0.22, cy + cs * 0.52);
-          ctx.lineTo(cx + cs * 0.44, cy + cs * 0.74);
-          ctx.lineTo(cx + cs * 0.78, cy + cs * 0.26);
+          ctx.moveTo(cx + cs * 0.22, cy + cs * 0.55);
+          ctx.lineTo(cx + cs * 0.44, cy + cs * 0.75);
+          ctx.lineTo(cx + cs * 0.78, cy + cs * 0.28);
           ctx.stroke();
         } else if (s === 3) {
           ctx.fillStyle = '#22cc44';

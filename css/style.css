@@ -296,6 +296,18 @@ input[type="range"] { width: 100%; accent-color: var(--primary); }
 }
 .focus-btn-exit:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
+/* ============ Vault ============ */
+.vault-list { max-height: 200px; overflow-y: auto; }
+.vault-item { display: flex; align-items: center; gap: 6px; padding: 4px 2px;
+  font-size: 12px; border-bottom: 1px solid var(--border); }
+.vault-item:last-child { border-bottom: none; }
+.vault-name { flex: 1; font-weight: 500; }
+.vault-meta { color: var(--text-dim); font-size: 10px; }
+.vault-load, .vault-del { padding: 2px 6px; font-size: 10px; border: 1px solid var(--border);
+  border-radius: 3px; background: var(--surface); cursor: pointer; }
+.vault-load:hover { border-color: var(--accent); color: var(--accent); }
+.vault-del:hover { border-color: var(--error); color: var(--error); }
+
 /* ============ Crop Overlay ============ */
 #canvas-wrap { position: relative; }
 #crop-overlay { z-index: 10; }

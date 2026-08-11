@@ -101,7 +101,17 @@
             updateRendererOpts(); renderConvert(); updateStatsPanel();
             $('#drop-zone').classList.add('has-image');
             var d = result.details || {};
-            toast('图纸导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | OCR:' + (d.ocrHits||0) + ' 颜色:' + (d.colorHits||0) + ' [' + result.confidence + ']', 'success');
+            var msg = '图纸导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | OCR:' + (d.ocrHits||0) + ' [' + result.confidence + ']';
+            if (result.validation && result.validation.length > 0) {
+              msg += ' ⚠️ 校验差异:';
+              for (var vi = 0; vi < Math.min(result.validation.length, 3); vi++) {
+                var vm = result.validation[vi];
+                msg += ' ' + vm.id + '(' + vm.recognized + '/' + vm.expected + ')';
+              }
+              toast(msg, 'warn');
+            } else {
+              toast(msg, 'success');
+            }
           };
           img.onerror = function() { toast('图片加载失败', 'error'); };
           img.src = e.target.result;
@@ -177,6 +187,14 @@
     $('#import-json').addEventListener('click', handleImportJSON);
     $('#copy-clip').addEventListener('click', handleCopyClip);
     $('#edit-undo').addEventListener('click', undoEdit);
+
+    // Mirror
+    $('#flip-h').addEventListener('click', function() { flipMatrix('h'); });
+    $('#flip-v').addEventListener('click', function() { flipMatrix('v'); });
+
+    // Vault
+    $('#save-to-vault').addEventListener('click', saveToVault);
+    loadVaultList();
 
     // Board
     $('#guide-spacing').addEventListener('input', () => {
@@ -547,26 +565,29 @@
           assistBatchMoved();
         });
       }
-      // 拖拽排序
+      // 拖拽排序 (dataTransfer 方式)
       var items = bl.querySelectorAll('[draggable]');
-      var dragFrom = null;
       for (var di = 0; di < items.length; di++) {
         items[di].addEventListener('dragstart', function(e) {
-          dragFrom = parseInt(this.getAttribute('data-batch-idx'));
-          this.style.opacity = '0.5';
+          e.dataTransfer.setData('text/plain', this.getAttribute('data-batch-idx'));
+          e.dataTransfer.effectAllowed = 'move';
+          this.style.opacity = '0.4';
         });
         items[di].addEventListener('dragend', function(e) {
           this.style.opacity = '1';
         });
-        items[di].addEventListener('dragover', function(e) { e.preventDefault(); });
+        items[di].addEventListener('dragover', function(e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
         items[di].addEventListener('drop', function(e) {
           e.preventDefault();
+          var from = parseInt(e.dataTransfer.getData('text/plain'));
           var to = parseInt(this.getAttribute('data-batch-idx'));
-          if (dragFrom !== null && dragFrom !== to) {
-            S.assistant.moveBatch(dragFrom, to);
+          if (!isNaN(from) && !isNaN(to) && from !== to) {
+            S.assistant.moveBatch(from, to);
             assistBatchMoved();
           }
-          dragFrom = null;
         });
       }
     }
@@ -596,7 +617,15 @@
 
   function advanceBatch() {
     if (!S.assistant) return;
-    const r = S.assistant.advanceBatch();
+    // 第一批自动启动
+    if (S.assistant.getCurrentBatch() === null) {
+      S.assistant.startFirstBatch();
+      renderAssist(); updateAssistUI();
+      var b = S.assistant.getCurrentBatch();
+      if (b) toast('开始: ' + b.colorName, 'info');
+      return;
+    }
+    var r = S.assistant.advanceBatch();
     renderAssist(); updateAssistUI();
     if (r.finished) toast('🎉 全部完成!', 'success');
     else if (r.batch) toast(`下一批: ${r.batch.colorName}`, 'info');
@@ -824,7 +853,127 @@
     }
   });
 
-  // ============ Crop Mode V2 — DIV overlay ============
+  // ============ Mirror ============
+  function flipMatrix(dir) {
+    if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
+    saveUndo();
+    var h = S.matrix.length, w = h > 0 ? S.matrix[0].length : 0;
+    var flipped = [];
+    if (dir === 'h') {
+      for (var y = 0; y < h; y++) {
+        var row = [];
+        for (var x = w - 1; x >= 0; x--) row.push(S.matrix[y][x]);
+        flipped.push(row);
+      }
+    } else {
+      for (var y = h - 1; y >= 0; y--) {
+        flipped.push(S.matrix[y].slice());
+      }
+    }
+    S.matrix = flipped;
+    S.stats = S.converter.getStats(S.matrix);
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    toast(dir === 'h' ? '水平翻转完成' : '垂直翻转完成', 'success');
+  }
+
+  // ============ Vault (localStorage 图纸仓库) ============
+  var VAULT_KEY = 'pindou_vault';
+
+  function getVault() {
+    try { return JSON.parse(localStorage.getItem(VAULT_KEY)) || []; }
+    catch(e) { return []; }
+  }
+
+  function saveVault(v) {
+    localStorage.setItem(VAULT_KEY, JSON.stringify(v));
+  }
+
+  function saveToVault() {
+    if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
+    var name = prompt('图纸名称:', '图纸 ' + new Date().toLocaleDateString());
+    if (!name) return;
+    var vault = getVault();
+    // 精简存储: 只存色号ID矩阵
+    var compact = S.matrix.map(function(row) {
+      return row.map(function(c) { return c ? c.id : null; });
+    });
+    vault.push({
+      name: name,
+      date: new Date().toISOString(),
+      w: S.matrix[0].length,
+      h: S.matrix.length,
+      palette: S.paletteId,
+      data: compact,
+    });
+    if (vault.length > 50) vault = vault.slice(-50);
+    saveVault(vault);
+    loadVaultList();
+    toast('已保存: ' + name, 'success');
+  }
+
+  function loadVaultList() {
+    var vault = getVault();
+    var list = $('#vault-list');
+    var section = $('#vault-section');
+    if (vault.length === 0) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    list.innerHTML = '';
+    for (var i = vault.length - 1; i >= 0; i--) {
+      (function(idx) {
+        var item = vault[idx];
+        var li = document.createElement('li');
+        li.className = 'vault-item';
+        li.innerHTML = '<span class="vault-name">' + item.name + '</span>' +
+          '<span class="vault-meta">' + item.w + '×' + item.h + '</span>' +
+          '<button class="vault-load">载入</button>' +
+          '<button class="vault-del">×</button>';
+        li.querySelector('.vault-load').addEventListener('click', function() { loadFromVault(idx); });
+        li.querySelector('.vault-del').addEventListener('click', function(e) {
+          e.stopPropagation();
+          var v = getVault();
+          v.splice(idx, 1);
+          saveVault(v);
+          loadVaultList();
+          toast('已删除', 'info');
+        });
+        list.appendChild(li);
+      })(i);
+    }
+  }
+
+  function loadFromVault(idx) {
+    var vault = getVault();
+    var item = vault[idx];
+    if (!item) return;
+    var p = getPalette(item.palette || S.paletteId);
+    // 还原矩阵
+    var matrix = [];
+    for (var y = 0; y < item.h; y++) {
+      var row = [];
+      for (var x = 0; x < item.w; x++) {
+        var id = item.data[y][x];
+        if (id) {
+          var def = p.colors.find(function(c) { return c.id === id; });
+          row.push(def ? { id: def.id, name: def.id, hex: def.hex, rgb: def.rgb, category: def.group || '?' } : { id: id, name: id, hex: '#ccc', rgb: [204,204,204], category: '?' });
+        } else {
+          row.push(null);
+        }
+      }
+      matrix.push(row);
+    }
+    S.matrix = matrix;
+    S.targetW = item.w; S.targetH = item.h;
+    $('#width-input').value = S.targetW;
+    $('#height-input').value = S.targetH;
+    S.stats = S.converter.getStats(S.matrix);
+    S.image = null; S.patternImage = null;
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    $('#drop-zone').classList.add('has-image');
+    toast('已载入: ' + item.name, 'success');
+  }
   var _cropMode = false, _cropRect = null, _cropDragEdge = null;
   var _cropStart = null, _cropOrigRect = null;
 

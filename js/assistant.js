@@ -54,13 +54,16 @@ function createAssistant(colorMatrix, boardConfig, shiftX, shiftY) {
   let currentBatchIndex = -1;
   let isolatedList = [];
 
-  if (batches.length > 0) {
+  // 不自动启动，等用户点"开始"或"下一批"
+  currentBatchIndex = -1;
+  isolatedList = [];
+
+  function startFirstBatch() {
+    if (currentBatchIndex >= 0 || batches.length === 0) return false;
     currentBatchIndex = 0;
     setBatchStatus(batches[0], statusMatrix, STATUS.CURRENT);
-    isolatedList = detectIsolated(
-      batches[0].positions,
-      getCompletedPositions(statusMatrix),
-    );
+    isolatedList = detectIsolated(batches[0].positions, getCompletedPositions(statusMatrix));
+    return true;
   }
 
   // --- API ---
@@ -140,7 +143,7 @@ function createAssistant(colorMatrix, boardConfig, shiftX, shiftY) {
 
   return {
     statusMatrix, paddedMatrix: getPaddedMatrix(),
-    advanceBatch, revertBatch, toggleCell, moveBatch,
+    advanceBatch, revertBatch, toggleCell, moveBatch, startFirstBatch,
     getCurrentBatch, getBatchOverview,
     getStatusMatrix, getIsolated, getPaddedMatrix,
     batches,
