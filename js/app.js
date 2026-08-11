@@ -89,7 +89,8 @@
           img.onload = function() {
             var p = getPalette(S.paletteId);
             var lp = precomputeLab(p.colors);
-            var result = importPatternImage(img, lp, S.converter);
+            toast('正在识别图纸...', 'info');
+            importPatternImage(img, lp, S.converter).then(function(result) {
             S.matrix = result.matrix;
             S.targetW = result.matrix[0] ? result.matrix[0].length : 29;
             S.targetH = result.matrix.length;
@@ -112,6 +113,7 @@
             } else {
               toast(msg, 'success');
             }
+            }); // end .then
           };
           img.onerror = function() { toast('图片加载失败', 'error'); };
           img.src = e.target.result;
@@ -338,13 +340,22 @@
   }
 
   function importFromImage(img) {
-    const p = getPalette(S.paletteId);
-    const labPalette = precomputeLab(p.colors);
-    const result = importPatternImage(img, labPalette, S.converter);
-
-    const d = result.details || {};
-    toast(`导入: ${d.rows||'?'}×${d.cols||'?'} | OCR:${d.ocrHits||0} 颜色:${d.colorHits||0} 一致:${d.agree||0} [${result.confidence}]`, 'success');
-    enterAssistMode(result.matrix);
+    var p = getPalette(S.paletteId);
+    var lp = precomputeLab(p.colors);
+    toast('正在识别图纸...', 'info');
+    importPatternImage(img, lp, S.converter).then(function(result) {
+      var d = result.details || {};
+      var msg = '导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | 颜色:' + (d.colorHits||0) + ' | 图例:' + (d.legendSize||0);
+      if (d.tesseractLegendHits) msg += ' | Tesseract图例:' + d.tesseractLegendHits;
+      msg += ' [' + (result.confidence || 'ok') + ']';
+      if (result.validation && result.validation.length > 0) {
+        msg += ' ⚠️ 差异:';
+        for (var vi = 0; vi < Math.min(result.validation.length, 3); vi++)
+          msg += ' ' + result.validation[vi].id + '(' + result.validation[vi].recognized + '/' + result.validation[vi].expected + ')';
+        toast(msg, 'warn');
+      } else { toast(msg, 'success'); }
+      enterAssistMode(result.matrix);
+    });
   }
 
   // ============ Convert ============
