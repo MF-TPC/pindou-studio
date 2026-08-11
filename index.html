@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>拼豆工作室 — Pindou Studio</title>
+  <title>格物 — Pindou Studio</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23e8724a'/><circle cx='12' cy='12' r='3' fill='%23fff' opacity='.5'/></svg>">
 </head>
@@ -11,7 +11,7 @@
 
 <header class="app-header">
   <button class="panel-toggle" id="toggle-left" title="左侧面板">☰</button>
-  <span class="logo">拼豆工作室</span>
+  <span class="logo">格物</span>
   <div class="mode-tabs">
     <button class="mode-tab active" id="tab-convert">🎨 转换</button>
     <button class="mode-tab" id="tab-assist">📍 辅助</button>
@@ -122,7 +122,7 @@
       <div class="form-row">
         <div class="form-group" style="flex:1">
           <label class="form-label">板宽</label>
-          <input type="number" id="board-width" value="58" min="10" max="200">
+          <input type="number" id="board-width" value="78" min="10" max="200">
         </div>
         <div class="form-group" style="flex:1">
           <label class="form-label">板高</label>
@@ -140,7 +140,7 @@
       <div class="form-group">
         <label class="form-label">起始偏移</label>
         <div class="range-row">
-          <input type="range" id="guide-offset" min="0" max="10" value="0">
+          <input type="range" id="guide-offset" min="0" max="10" value="4">
           <span class="range-val" id="guide-offset-label">0格</span>
         </div>
       </div>
@@ -181,6 +181,17 @@
           <span id="batch-progress" style="font-size:12px;color:var(--color-text-dim)">—</span>
         </div>
       </div>
+      <!-- 图案平移 -->
+      <div class="panel-section" id="shift-section">
+        <div class="section-title">↔ 图案位置</div>
+        <div style="text-align:center">
+          <button class="btn btn-sm" id="shift-up" style="min-width:40px">↑</button><br>
+          <button class="btn btn-sm" id="shift-left" style="min-width:40px">←</button>
+          <button class="btn btn-sm" id="shift-down" style="min-width:40px">↓</button>
+          <button class="btn btn-sm" id="shift-right" style="min-width:40px">→</button>
+        </div>
+      </div>
+
       <button class="btn btn-primary btn-block" id="btn-advance" style="margin-top:8px">✅ 本批完成, 下一批</button>
       <button class="btn btn-sm btn-block" id="btn-revert" style="margin-top:4px">↩ 撤销上一批</button>
       <button class="btn btn-sm btn-block btn-accent" id="btn-focus" style="margin-top:4px">🎯 专注模式 (F)</button>

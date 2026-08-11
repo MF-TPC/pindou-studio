@@ -16,55 +16,63 @@
  * @returns {{ matrix: Array<Array>, stats: Object|null, confidence: string }}
  */
 function importPatternImage(img, labPalette, converter) {
-  const canvas = document.createElement('canvas');
-  canvas.width = img.naturalWidth;
-  canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext('2d');
+  var canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  var ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
 
-  const roi = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+  var roi = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
 
-  // Step 1: 网格检测
-  const grid = detectGrid(canvas, roi);
-  if (!grid) {
-    // 降级: 直接颜色采样
-    return fallbackImport(canvas, roi, labPalette, converter);
+  // Step 1: 图例优先解析 —— 先弄清图纸用了哪些颜色
+  var legend = parseLegend(ctx, roi, labPalette);
+  // 从 legend 构建受限色板 (只有图纸中出现的颜色)
+  var legendPalette = null;
+  if (legend.length >= 3) {
+    legendPalette = legend.map(function(l) {
+      var def = labPalette.find(function(c) { return c.id === l.id; });
+      return def || { id: l.id, hex: l.hex, rgb: l.rgb, lab: rgbToLab(l.rgb[0], l.rgb[1], l.rgb[2]) };
+    });
   }
 
-  const { rows, cols, cellSize } = grid;
-  const cellW = roi.w / cols;
-  const cellH = roi.h / rows;
+  // Step 2: 多尺度网格检测验证
+  var grid = detectGrid(canvas, roi);
+  if (!grid) return fallbackImport(canvas, roi, labPalette, converter);
 
-  // Step 2: 逐格双通道读取
-  const cellResults = [];
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const cx = Math.round(roi.x + x * cellW + cellW / 2);
-      const cy = Math.round(roi.y + y * cellH + cellH / 2);
+  // 在检测值附近尝试多个尺寸，选图例匹配率最高的
+  var bestResult = null, bestScore = 0;
+  var sizes = [grid.rows];
+  for (var d = -2; d <= 2; d++) { if (d !== 0 && grid.rows + d >= 2) sizes.push(grid.rows + d); }
 
-      // 通道A: 颜色采样 (格子中心 3×3 中位数)
-      const colorCode = readCellByColor(ctx, cx, cy, Math.floor(cellW), labPalette);
+  for (var si = 0; si < sizes.length; si++) {
+    var tryRows = sizes[si];
+    var tryCols = Math.round(grid.cols * tryRows / grid.rows);
+    if (tryCols < 2 || tryRows < 2) continue;
 
-      // 通道B: 符号 OCR (传入颜色结果缩小候选)
-      const ocrCode = readCellByOCR(ctx, cx, cy, Math.floor(cellW), Math.floor(cellH), colorCode);
+    var cellW = roi.w / tryCols, cellH = roi.h / tryRows;
+    var results = [];
+    for (var y = 0; y < tryRows; y++) {
+      for (var x = 0; x < tryCols; x++) {
+        var cx = Math.round(roi.x + x * cellW + cellW / 2);
+        var cy = Math.round(roi.y + y * cellH + cellH / 2);
+        var cc = readCellByColor(ctx, cx, cy, Math.floor(cellW), labPalette);
+        var oc = readCellByOCR(ctx, cx, cy, Math.floor(cellW), Math.floor(cellH), cc);
+        results.push({ x: x, y: y, colorCode: cc, ocrCode: oc });
+      }
+    }
 
-      cellResults.push({ x, y, colorCode, ocrCode });
+    var validated = crossValidateAndBuild(results, tryRows, tryCols, legend);
+    var score = validated.agree + validated.ocrHits * 0.5 + (legend.length >= 3 ? validated.colorHits * 0.3 : 0);
+    if (score > bestScore) {
+      bestScore = score; bestResult = { codes: validated.codes, rows: tryRows, cols: tryCols, cellSize: Math.floor(cellW), ocrHits: validated.ocrHits, colorHits: validated.colorHits, agree: validated.agree, confidence: validated.confidence };
     }
   }
 
-  // Step 3: 图例解析
-  const legend = parseLegend(ctx, roi, labPalette);
-
-  // Step 4: 交叉验证 → 构建矩阵
-  const result = crossValidateAndBuild(cellResults, rows, cols, legend);
-
-  // Step 5: 用 converter 的色板重建完整 cell 对象
-  const matrix = buildMatrix(result.codes, rows, cols, converter || null);
-
+  var d = bestResult;
+  var matrix = buildMatrix(d.codes, d.rows, d.cols, converter || null);
   return {
-    matrix,
-    confidence: result.confidence,
-    details: { rows, cols, cellSize, ocrHits: result.ocrHits, colorHits: result.colorHits, agree: result.agree, legendSize: legend.length },
+    matrix: matrix,
+    confidence: d.confidence,
+    details: { rows: d.rows, cols: d.cols, cellSize: d.cellSize, ocrHits: d.ocrHits, colorHits: d.colorHits, agree: d.agree, legendSize: legend.length },
   };
 }
 
@@ -329,6 +337,34 @@ function crossValidateAndBuild(cellResults, rows, cols, legend) {
     : colorHits > total * 0.7 ? 'medium' : 'low';
 
   return { codes, confidence: conf, ocrHits, colorHits, agree };
+}
+
+// ============ 指定尺寸重采样 ============
+
+function resamplePatternImage(img, targetW, targetH, labPalette, converter) {
+  var c = document.createElement('canvas');
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  var ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  var roi = { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+  var cellW = roi.w / targetW, cellH = roi.h / targetH;
+  var results = [];
+  for (var y = 0; y < targetH; y++) {
+    for (var x = 0; x < targetW; x++) {
+      var cx = Math.round(roi.x + x * cellW + cellW / 2);
+      var cy = Math.round(roi.y + y * cellH + cellH / 2);
+      var cc = readCellByColor(ctx, cx, cy, Math.floor(cellW), labPalette);
+      var oc = readCellByOCR(ctx, cx, cy, Math.floor(cellW), Math.floor(cellH), cc);
+      results.push({ x: x, y: y, colorCode: cc, ocrCode: oc });
+    }
+  }
+  var legend = parseLegend(ctx, roi, labPalette);
+  var v = crossValidateAndBuild(results, targetH, targetW, legend);
+  return {
+    matrix: buildMatrix(v.codes, targetH, targetW, converter),
+    confidence: v.confidence,
+    details: { rows: targetH, cols: targetW, cellSize: Math.floor(cellW), ocrHits: v.ocrHits, colorHits: v.colorHits, agree: v.agree, legendSize: legend.length },
+  };
 }
 
 // ============ 辅助 ============

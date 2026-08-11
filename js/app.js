@@ -13,7 +13,7 @@
     mode: 'convert',
 
     // Convert
-    image: null, matrix: null, stats: null, converter: null,
+    image: null, patternImage: null, matrix: null, stats: null, converter: null,
     paletteId: 'mard-221', targetW: 58, targetH: 58,
     matchAlgo: 'median-cut',
     renderStyle: 'symbol', showGrid: true, cellSize: 20,
@@ -22,6 +22,7 @@
     // Assist
     boardConfig: createBoardConfig(),
     assistant: null, colorMatrix: null,
+    shiftX: 0, shiftY: 0,
 
     // Edit
     editHistory: [],
@@ -95,7 +96,8 @@
             $('#width-input').value = S.targetW;
             $('#height-input').value = S.targetH;
             S.stats = S.converter.getStats(S.matrix);
-            S.image = null; // 标记非原图转换
+            S.image = null;
+            S.patternImage = img; // 存原图，允许后续改尺寸重解析
             updateRendererOpts(); renderConvert(); updateStatsPanel();
             $('#drop-zone').classList.add('has-image');
             var d = result.details || {};
@@ -119,13 +121,13 @@
     // Match algo
     $('#match-algo').addEventListener('change', () => {
       S.matchAlgo = $('#match-algo').value;
-      if (S.image) doConvert();
+      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
     });
 
     // Palette
     $('#palette-select').addEventListener('change', () => {
       S.paletteId = $('#palette-select').value;
-      syncConverter(); if (S.image) doConvert();
+      syncConverter(); if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
     });
 
     // Size
@@ -135,7 +137,7 @@
         S.targetH = clamp(1, 500, Math.round(S.targetW / S.aspectRatio));
         $('#height-input').value = S.targetH;
       }
-      if (S.image) doConvert();
+      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
     });
     $('#height-input').addEventListener('input', () => {
       S.targetH = clamp(1, 500, parseInt($('#height-input').value) || 29);
@@ -143,7 +145,7 @@
         S.targetW = clamp(1, 500, Math.round(S.targetH * S.aspectRatio));
         $('#width-input').value = S.targetW;
       }
-      if (S.image) doConvert();
+      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
     });
     $('#aspect-lock').addEventListener('click', () => {
       S.lockAspect = !S.lockAspect;
@@ -214,6 +216,18 @@
     $('#btn-advance').addEventListener('click', advanceBatch);
     $('#btn-revert').addEventListener('click', revertBatch);
     $('#btn-focus').addEventListener('click', enterFocusMode);
+
+    // Pattern shift arrows
+    function shiftPattern(dx, dy) {
+      if (!S.assistant) return;
+      S.shiftX += dx; S.shiftY += dy;
+      S.assistant = createAssistant(S.colorMatrix, S.boardConfig, S.shiftX, S.shiftY);
+      renderAssist(); updateAssistUI();
+    }
+    $('#shift-up').addEventListener('click', function() { shiftPattern(0, -1); });
+    $('#shift-down').addEventListener('click', function() { shiftPattern(0, 1); });
+    $('#shift-left').addEventListener('click', function() { shiftPattern(-1, 0); });
+    $('#shift-right').addEventListener('click', function() { shiftPattern(1, 0); });
 
     // Canvas click: assist=toggle, convert=edit cell
     $('#preview-canvas').addEventListener('click', e => {
@@ -314,9 +328,22 @@
   // ============ Convert ============
   function doConvert() {
     if (!S.image || !S.converter) return;
+    S.patternImage = null; // 原图转换清除图纸标记
     const r = S.converter.convert(S.image, S.targetW, S.targetH, S.matchAlgo);
     S.matrix = r.matrix; S.stats = r.stats;
     updateRendererOpts(); renderConvert(); updateStatsPanel();
+  }
+
+  function resampleFromStored() {
+    if (!S.patternImage || !S.converter) return;
+    var p = getPalette(S.paletteId);
+    var lp = precomputeLab(p.colors);
+    var result = resamplePatternImage(S.patternImage, S.targetW, S.targetH, lp, S.converter);
+    S.matrix = result.matrix;
+    S.stats = S.converter.getStats(S.matrix);
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    var d = result.details || {};
+    toast('重采样: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | OCR:' + (d.ocrHits||0) + ' [' + result.confidence + ']', 'info');
   }
 
   function setStyle(s) {
@@ -329,7 +356,7 @@
   function updateRendererOpts() {
     renderer.setOptions({
       cellSize: S.cellSize, renderStyle: S.renderStyle, showGrid: S.showGrid,
-      boardLineColor: '#b040e0',
+      boardLineColor: '#d03030',
     });
   }
 
@@ -441,7 +468,7 @@
     S.boardConfig.guideSpacing = parseInt($('#guide-spacing').value);
     S.boardConfig.guideOffset = parseInt($('#guide-offset').value);
     if (S.assistant && S.colorMatrix) {
-      S.assistant = createAssistant(S.colorMatrix, S.boardConfig);
+      S.assistant = createAssistant(S.colorMatrix, S.boardConfig, S.shiftX, S.shiftY);
       renderAssist(); updateAssistUI();
     }
     updateBoardPreview();
@@ -453,13 +480,13 @@
     S.colorMatrix = matrix;
     // 自动匹配板子尺寸: 至少装下图纸，向上取整到 29 的倍数
     const mw = matrix[0]?.length || 29, mh = matrix.length || 29;
-    S.boardConfig.width = Math.ceil(Math.max(mw, 29) / 29) * 29;
-    S.boardConfig.height = Math.ceil(Math.max(mh, 29) / 29) * 29;
+    S.boardConfig.width = Math.ceil(Math.max(mw, 78) / 78) * 78;
+    S.boardConfig.height = Math.ceil(Math.max(mh, 78) / 78) * 78;
     $('#board-width').value = S.boardConfig.width;
     $('#board-height').value = S.boardConfig.height;
     updateBoardPreview();
 
-    S.assistant = createAssistant(matrix, S.boardConfig);
+    S.assistant = createAssistant(matrix, S.boardConfig, S.shiftX, S.shiftY);
     S.stats = S.converter ? S.converter.getStats(matrix) : null;
     switchMode('assist');
     updateAssistUI(); renderAssist();
@@ -485,11 +512,31 @@
     const bl = $('#batch-list');
     if (bl) {
       bl.innerHTML = '';
-      for (const b of overview) {
-        const li = document.createElement('li'); li.className = `batch-ov-item batch-ov-${b.status}`;
-        li.innerHTML = `<span class="bo-swatch" style="background:${b.hex}"></span>
-          <span>${b.colorName}</span><span class="bo-count">${b.count}颗</span>`;
+      for (var bi = 0; bi < overview.length; bi++) {
+        var b = overview[bi];
+        var li = document.createElement('li');
+        li.className = 'batch-ov-item batch-ov-' + b.status;
+        var btns = '';
+        if (b.status === 'pending') {
+          btns = '<span class="bo-arrows">' +
+            (bi > 0 ? '<button class="bo-arr" data-from="' + b.index + '" data-to="' + (bi - 1) + '">⬆</button>' : '') +
+            (bi < overview.length - 1 ? '<button class="bo-arr" data-from="' + b.index + '" data-to="' + (bi + 1) + '">⬇</button>' : '') +
+            '</span>';
+        }
+        li.innerHTML = '<span class="bo-swatch" style="background:' + b.hex + '"></span>' +
+          '<span>' + b.colorName + '</span><span class="bo-count">' + b.count + '颗</span>' + btns;
         bl.appendChild(li);
+      }
+      // 绑定排序按钮
+      var arrs = bl.querySelectorAll('.bo-arr');
+      for (var ai = 0; ai < arrs.length; ai++) {
+        arrs[ai].addEventListener('click', function(e) {
+          e.stopPropagation();
+          var from = parseInt(this.getAttribute('data-from'));
+          var to = parseInt(this.getAttribute('data-to'));
+          S.assistant.moveBatch(from, to);
+          assistBatchMoved();
+        });
       }
     }
 
@@ -511,6 +558,11 @@
     }
   }
 
+  function assistBatchMoved() {
+    renderAssist(); updateAssistUI();
+    toast('批次顺序已调整', 'info');
+  }
+
   function advanceBatch() {
     if (!S.assistant) return;
     const r = S.assistant.advanceBatch();
@@ -521,10 +573,10 @@
 
   function revertBatch() {
     if (!S.assistant) return;
-    const r = S.assistant.revertBatch();
+    var r = S.assistant.revertBatch();
+    if (r.atStart && !r.batch) { toast('已是第一步', 'warn'); return; }
     renderAssist(); updateAssistUI();
-    if (r.batch) toast(`已撤销: ${r.batch.colorName}`, 'info');
-    else toast('已回初始', 'info');
+    if (r.batch) toast('已撤销到: ' + r.batch.colorName, 'info');
   }
 
   // ============ Export ============

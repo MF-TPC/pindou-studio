@@ -5,8 +5,8 @@
 
 function createBoardConfig() {
   return {
-    width: 58, height: 58,
-    guideSpacing: 5, guideOffset: 0,
+    width: 78, height: 78,
+    guideSpacing: 5, guideOffset: 4,
   };
 }
 

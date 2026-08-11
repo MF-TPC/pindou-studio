@@ -9,10 +9,12 @@
 
 const STATUS = { INVALID: 0, PENDING: 1, COMPLETED: 2, CURRENT: 3 };
 
-function createAssistant(colorMatrix, boardConfig) {
+function createAssistant(colorMatrix, boardConfig, shiftX, shiftY) {
+  shiftX = shiftX || 0; shiftY = shiftY || 0;
   const mh = colorMatrix.length, mw = mh > 0 ? colorMatrix[0].length : 0;
   const bw = boardConfig.width, bh = boardConfig.height;
-  const off = centerOffset(boardConfig, mw, mh);
+  const base = centerOffset(boardConfig, mw, mh);
+  const off = { ox: base.ox + shiftX, oy: base.oy + shiftY };
 
   // 构建板子尺寸的状态矩阵
   const statusMatrix = [];
@@ -83,11 +85,12 @@ function createAssistant(colorMatrix, boardConfig) {
   }
 
   function revertBatch() {
-    if (currentBatchIndex >= 0 && currentBatchIndex < batches.length) {
+    if (currentBatchIndex < 0) return { reverted: false, finished: false, batch: null, atStart: true };
+    if (currentBatchIndex < batches.length) {
       setBatchStatus(batches[currentBatchIndex], statusMatrix, STATUS.PENDING);
       batches[currentBatchIndex].status = 'pending';
     }
-    if (currentBatchIndex <= 0) { currentBatchIndex = -1; isolatedList = []; return { reverted: true, batch: null }; }
+    if (currentBatchIndex <= 0) { currentBatchIndex = -1; isolatedList = []; return { reverted: true, batch: null, atStart: true }; }
     currentBatchIndex--;
     const prev = batches[currentBatchIndex];
     setBatchStatus(prev, statusMatrix, STATUS.CURRENT);
@@ -116,7 +119,19 @@ function createAssistant(colorMatrix, boardConfig) {
       colorId: b.colorId, colorName: b.colorName, hex: b.hex,
       count: b.positions.length,
       status: i < currentBatchIndex ? 'completed' : i === currentBatchIndex ? 'current' : 'pending',
+      index: i,
     }));
+  }
+
+  function moveBatch(fromIdx, toIdx) {
+    if (fromIdx < 0 || fromIdx >= batches.length || toIdx < 0 || toIdx >= batches.length) return;
+    if (fromIdx <= currentBatchIndex || toIdx <= currentBatchIndex) return; // 不能移动已完成或当前批
+    var item = batches.splice(fromIdx, 1)[0];
+    batches.splice(toIdx, 0, item);
+    // 重新计算当前批次的孤立点
+    if (currentBatchIndex >= 0 && currentBatchIndex < batches.length) {
+      isolatedList = detectIsolated(batches[currentBatchIndex].positions, getCompletedPositions(statusMatrix));
+    }
   }
 
   function getStatusMatrix() { return statusMatrix.map(r => [...r]); }
