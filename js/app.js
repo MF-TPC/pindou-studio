@@ -385,7 +385,7 @@
 
   function rerender() {
     if (S.mode === 'convert' && S.matrix) {
-      if (_cropMode) renderCropOverlay(); else renderConvert();
+      if (_cropMode) { renderConvert(); updateCropBox(); } else renderConvert();
     }
     else if (S.mode === 'assist' && S.assistant) renderAssist();
   }
@@ -824,8 +824,36 @@
     }
   });
 
-  // ============ Crop Mode ============
-  var _cropMode = false, _cropRect = null, _cropDrag = null;
+  // ============ Crop Mode V2 — DIV overlay ============
+  var _cropMode = false, _cropRect = null, _cropDragEdge = null;
+  var _cropStart = null, _cropOrigRect = null;
+
+  function gridToPixel(gx, gy) {
+    var cs = S.cellSize * S.zoom, pad = 3 * cs;
+    return { x: pad + gx * cs, y: pad + gy * cs };
+  }
+
+  function updateCropBox() {
+    var r = _cropRect; if (!r) return;
+    var tl = gridToPixel(r.left, r.top);
+    var br = gridToPixel(r.right + 1, r.bottom + 1);
+    var box = $('#crop-box');
+    box.style.left = tl.x + 'px'; box.style.top = tl.y + 'px';
+    box.style.width = (br.x - tl.x) + 'px'; box.style.height = (br.y - tl.y) + 'px';
+
+    var w = $('#preview-canvas').width, h = $('#preview-canvas').height;
+    function setStyle(id, l, t, w2, h2) {
+      var el = document.getElementById(id);
+      el.style.left = l + 'px'; el.style.top = t + 'px';
+      el.style.width = w2 + 'px'; el.style.height = h2 + 'px';
+    }
+    setStyle('crop-mask-t', 0, 0, w, tl.y);
+    setStyle('crop-mask-b', 0, br.y, w, Math.max(0, h - br.y));
+    setStyle('crop-mask-l', 0, tl.y, tl.x, br.y - tl.y);
+    setStyle('crop-mask-r', br.x, tl.y, Math.max(0, w - br.x), br.y - tl.y);
+
+    updateCropInputs();
+  }
 
   function enterCropMode() {
     if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
@@ -833,22 +861,18 @@
     var w = S.matrix[0].length, h = S.matrix.length;
     _cropRect = { left: 0, top: 0, right: w - 1, bottom: h - 1 };
     $('#crop-section').style.display = 'block';
+    $('#crop-overlay').style.display = 'block';
     $('#crop-btn').textContent = '✂️ 裁剪中...';
-    updateCropInputs();
-    renderCropOverlay();
-    // 鼠标事件
-    $('#preview-canvas').addEventListener('mousedown', onCropMouseDown);
-    window.addEventListener('mousemove', onCropMouseMove);
-    window.addEventListener('mouseup', onCropMouseUp);
+    updateCropBox();
+    bindCropEvents();
   }
 
   function exitCropMode(skipRender) {
-    _cropMode = false; _cropRect = null; _cropDrag = null;
+    _cropMode = false; _cropRect = null; _cropDragEdge = null;
     $('#crop-section').style.display = 'none';
+    $('#crop-overlay').style.display = 'none';
     $('#crop-btn').textContent = '✂️ 裁剪图纸';
-    $('#preview-canvas').removeEventListener('mousedown', onCropMouseDown);
-    window.removeEventListener('mousemove', onCropMouseMove);
-    window.removeEventListener('mouseup', onCropMouseUp);
+    unbindCropEvents();
     if (!skipRender) renderConvert();
   }
 
@@ -858,157 +882,88 @@
     $('#crop-right').value = _cropRect.right;
     $('#crop-top').value = _cropRect.top;
     $('#crop-bottom').value = _cropRect.bottom;
-    $('#crop-left').max = _cropRect.right - 1;
-    $('#crop-right').min = _cropRect.left + 1;
-    $('#crop-top').max = _cropRect.bottom - 1;
-    $('#crop-bottom').min = _cropRect.top + 1;
   }
 
-  function canvasToGrid(ex, ey) {
+  function bindCropEvents() {
+    $('#crop-overlay').addEventListener('mousedown', onCropStart);
+    $('#crop-overlay').addEventListener('touchstart', onCropStart, { passive: false });
+    window.addEventListener('mousemove', onCropMove);
+    window.addEventListener('touchmove', onCropMove, { passive: false });
+    window.addEventListener('mouseup', onCropEnd);
+    window.addEventListener('touchend', onCropEnd);
+  }
+
+  function unbindCropEvents() {
+    $('#crop-overlay').removeEventListener('mousedown', onCropStart);
+    $('#crop-overlay').removeEventListener('touchstart', onCropStart);
+    window.removeEventListener('mousemove', onCropMove);
+    window.removeEventListener('touchmove', onCropMove);
+    window.removeEventListener('mouseup', onCropEnd);
+    window.removeEventListener('touchend', onCropEnd);
+  }
+
+  function getClientPos(e) {
+    if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function onCropStart(e) {
+    if (!_cropMode) return;
+    var target = e.target;
+    var edge = null;
+    if (target.hasAttribute && target.hasAttribute('data-edge')) edge = target.getAttribute('data-edge');
+    else if (target.id === 'crop-box' || target.closest('#crop-box')) edge = 'move';
+    if (!edge) return;
+    e.preventDefault();
+    var pos = getClientPos(e);
+    _cropDragEdge = edge;
+    _cropStart = snapToGrid(pos.x, pos.y);
+    _cropOrigRect = Object.assign({}, _cropRect);
+  }
+
+  function snapToGrid(cx, cy) {
     var rc = $('#preview-canvas').getBoundingClientRect();
     var cs = S.cellSize * S.zoom, pad = 3 * cs;
-    var sx = (ex - rc.left) * ($('#preview-canvas').width / rc.width);
-    var sy = (ey - rc.top) * ($('#preview-canvas').height / rc.height);
+    var sx = (cx - rc.left) * ($('#preview-canvas').width / rc.width);
+    var sy = (cy - rc.top) * ($('#preview-canvas').height / rc.height);
     return {
-      x: Math.floor((sx - pad) / cs),
-      y: Math.floor((sy - pad) / cs),
+      x: Math.round((sx - pad) / cs),
+      y: Math.round((sy - pad) / cs),
     };
   }
 
-  function onCropMouseDown(e) {
-    if (!_cropMode || !_cropRect) return;
-    var g = canvasToGrid(e.clientX, e.clientY);
-    if (g.x < 0 || g.y < 0) return;
-    // 检测是否在角或边附近 (4px 容差)
-    var edge = getCropEdge(g.x, g.y);
-    if (edge) {
-      _cropDrag = { edge: edge, startX: g.x, startY: g.y };
-    } else if (g.x >= _cropRect.left && g.x <= _cropRect.right && g.y >= _cropRect.top && g.y <= _cropRect.bottom) {
-      // 在选框内 → 拖拽移动整个选框
-      _cropDrag = { edge: 'move', startX: g.x, startY: g.y, origRect: Object.assign({}, _cropRect) };
+  function onCropMove(e) {
+    if (!_cropDragEdge) return;
+    e.preventDefault();
+    var pos = getClientPos(e);
+    var g = snapToGrid(pos.x, pos.y);
+    var r = _cropRect, o = _cropOrigRect;
+    var mw = S.matrix[0].length - 1, mh = S.matrix.length - 1;
+    var dx = g.x - _cropStart.x, dy = g.y - _cropStart.y;
+
+    switch (_cropDragEdge) {
+      case 'move':
+        var ow = o.right - o.left, oh = o.bottom - o.top;
+        r.left = clamp(0, mw - ow, o.left + dx);
+        r.top = clamp(0, mh - oh, o.top + dy);
+        r.right = r.left + ow;
+        r.bottom = r.top + oh;
+        break;
+      case 'tl': r.left = clamp(0, r.right - 1, o.left + dx); r.top = clamp(0, r.bottom - 1, o.top + dy); break;
+      case 'tr': r.right = clamp(r.left + 1, mw, o.right + dx); r.top = clamp(0, r.bottom - 1, o.top + dy); break;
+      case 'bl': r.left = clamp(0, r.right - 1, o.left + dx); r.bottom = clamp(r.top + 1, mh, o.bottom + dy); break;
+      case 'br': r.right = clamp(r.left + 1, mw, o.right + dx); r.bottom = clamp(r.top + 1, mh, o.bottom + dy); break;
+      case 't': r.top = clamp(0, r.bottom - 1, o.top + dy); break;
+      case 'b': r.bottom = clamp(r.top + 1, mh, o.bottom + dy); break;
+      case 'l': r.left = clamp(0, r.right - 1, o.left + dx); break;
+      case 'r': r.right = clamp(r.left + 1, mw, o.right + dx); break;
     }
+    updateCropBox();
   }
 
-  function getCropEdge(gx, gy) {
-    var r = _cropRect, tol = Math.max(4, Math.floor(12 / Math.max(1, S.zoom)));
-    var nearLeft = Math.abs(gx - r.left) <= tol;
-    var nearRight = Math.abs(gx - r.right) <= tol;
-    var nearTop = Math.abs(gy - r.top) <= tol;
-    var nearBottom = Math.abs(gy - r.bottom) <= tol;
-    var inH = gy >= r.top - tol && gy <= r.bottom + tol;
-    var inV = gx >= r.left - tol && gx <= r.right + tol;
-    if (nearLeft && nearTop) return 'tl';
-    if (nearRight && nearTop) return 'tr';
-    if (nearLeft && nearBottom) return 'bl';
-    if (nearRight && nearBottom) return 'br';
-    if (nearLeft && inH) return 'left';
-    if (nearRight && inH) return 'right';
-    if (nearTop && inV) return 'top';
-    if (nearBottom && inV) return 'bottom';
-    if (gx > r.left && gx < r.right && gy > r.top && gy < r.bottom) return 'move';
-    return null;
-  }
-
-  function onCropMouseMove(e) {
-    if (!_cropDrag || !_cropRect) return;
-    var g = canvasToGrid(e.clientX, e.clientY);
-    var w = S.matrix[0].length, h = S.matrix.length;
-    var r = _cropRect;
-    var edge = _cropDrag.edge;
-
-    if (edge === 'move') {
-      var dx = g.x - _cropDrag.startX;
-      var dy = g.y - _cropDrag.startY;
-      var or = _cropDrag.origRect;
-      var rw = or.right - or.left, rh = or.bottom - or.top;
-      var nl = clamp(0, w - 1 - rw, or.left + dx);
-      var nt = clamp(0, h - 1 - rh, or.top + dy);
-      r.left = nl; r.right = nl + rw;
-      r.top = nt; r.bottom = nt + rh;
-    } else if (edge.indexOf('l') >= 0) {
-      r.left = clamp(0, r.right - 1, g.x);
-    } else if (edge.indexOf('r') >= 0) {
-      r.right = clamp(r.left + 1, w - 1, g.x);
-    }
-    if (edge.indexOf('t') >= 0) {
-      r.top = clamp(0, r.bottom - 1, g.y);
-    } else if (edge.indexOf('b') >= 0) {
-      r.bottom = clamp(r.top + 1, h - 1, g.y);
-    }
-    updateCropInputs();
-    renderCropOverlay();
-  }
-
-  function onCropMouseUp(e) {
-    _cropDrag = null;
-  }
-
-  function renderCropOverlay() {
-    if (!S.matrix) return;
-    renderConvert(); // 先画底图
-    var cv = $('#preview-canvas');
-    var ctx = cv.getContext('2d');
-    var cs = S.cellSize * S.zoom, pad = 3 * cs;
-    var r = _cropRect;
-    if (!r) return;
-
-    // 选框外半透明黑
-    var cw = cv.width, ch = cv.height;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    // 上
-    var ry0 = pad + r.top * cs;
-    ctx.fillRect(0, 0, cw, ry0);
-    // 下
-    var ry1 = pad + (r.bottom + 1) * cs;
-    ctx.fillRect(0, ry1, cw, ch - ry1);
-    // 左
-    ctx.fillRect(0, ry0, pad + r.left * cs, ry1 - ry0);
-    // 右
-    var rx1 = pad + (r.right + 1) * cs;
-    ctx.fillRect(rx1, ry0, cw - rx1, ry1 - ry0);
-
-    // 选框边线
-    ctx.strokeStyle = '#4090ff'; ctx.lineWidth = 2;
-    ctx.setLineDash([6, 3]);
-    ctx.strokeRect(pad + r.left * cs, pad + r.top * cs, (r.right - r.left + 1) * cs, (r.bottom - r.top + 1) * cs);
-    ctx.setLineDash([]);
-
-    // 四角手柄 (外圈+内圈，大号可见)
-    var corners = [
-      [r.left, r.top], [r.right, r.top], [r.left, r.bottom], [r.right, r.bottom],
-    ];
-    var hSize = Math.max(5, Math.floor(cs * 0.28));
-    for (var ci = 0; ci < corners.length; ci++) {
-      var hx = pad + corners[ci][0] * cs, hy = pad + corners[ci][1] * cs;
-      // 外圈白边
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(hx, hy, hSize + 1, 0, Math.PI * 2); ctx.fill();
-      // 内圈蓝色
-      ctx.fillStyle = '#4090ff';
-      ctx.beginPath(); ctx.arc(hx, hy, hSize, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // 选框四个边的中点手柄
-    var mids = [
-      [Math.round((r.left + r.right) / 2), r.top],
-      [Math.round((r.left + r.right) / 2), r.bottom],
-      [r.left, Math.round((r.top + r.bottom) / 2)],
-      [r.right, Math.round((r.top + r.bottom) / 2)],
-    ];
-    var mSize = Math.max(3, Math.floor(cs * 0.16));
-    for (var mi = 0; mi < mids.length; mi++) {
-      var mx2 = pad + mids[mi][0] * cs, my2 = pad + mids[mi][1] * cs;
-      ctx.fillStyle = '#4090ff';
-      ctx.beginPath(); ctx.arc(mx2, my2, mSize, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // 尺寸标注
-    var rw = r.right - r.left + 1, rh = r.bottom - r.top + 1;
-    var midX = pad + (r.left + r.right) / 2 * cs;
-    var lblY = Math.max(18, pad + r.top * cs - 10);
-    ctx.fillStyle = '#4090ff'; ctx.font = 'bold 12px sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-    ctx.fillText(rw + '×' + rh, midX, lblY);
+  function onCropEnd(e) {
+    _cropDragEdge = null;
+    _cropStart = null;
   }
 
   function applyCrop() {
@@ -1033,22 +988,22 @@
     toast('裁剪完成: ' + S.targetW + '×' + S.targetH, 'success');
   }
 
-  // Crop events
   $('#crop-btn').addEventListener('click', function() {
     if (_cropMode) exitCropMode(); else enterCropMode();
   });
   $('#crop-apply').addEventListener('click', applyCrop);
   $('#crop-cancel').addEventListener('click', exitCropMode);
-  var cropInputs = ['crop-left', 'crop-right', 'crop-top', 'crop-bottom'];
-  for (var cii = 0; cii < cropInputs.length; cii++) {
-    document.getElementById(cropInputs[cii]).addEventListener('input', function() {
+
+  // 手动输入裁剪参数
+  var cropInputs2 = ['crop-left', 'crop-right', 'crop-top', 'crop-bottom'];
+  for (var cii2 = 0; cii2 < cropInputs2.length; cii2++) {
+    document.getElementById(cropInputs2[cii2]).addEventListener('input', function() {
       if (!_cropRect) return;
       _cropRect.left = parseInt($('#crop-left').value) || 0;
       _cropRect.right = parseInt($('#crop-right').value) || _cropRect.left + 1;
       _cropRect.top = parseInt($('#crop-top').value) || 0;
       _cropRect.bottom = parseInt($('#crop-bottom').value) || _cropRect.top + 1;
-      updateCropInputs();
-      renderCropOverlay();
+      updateCropBox();
     });
   }
 

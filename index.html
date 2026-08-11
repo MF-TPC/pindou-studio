@@ -221,6 +221,23 @@
   <main class="canvas-area" id="canvas-area">
     <div id="canvas-wrap">
       <canvas id="preview-canvas" width="400" height="280"></canvas>
+      <!-- 裁剪覆盖层 -->
+      <div id="crop-overlay" style="display:none;position:absolute;inset:0">
+        <div class="crop-mask" id="crop-mask-t"></div>
+        <div class="crop-mask" id="crop-mask-b"></div>
+        <div class="crop-mask" id="crop-mask-l"></div>
+        <div class="crop-mask" id="crop-mask-r"></div>
+        <div class="crop-box" id="crop-box">
+          <div class="crop-handle" data-edge="tl"></div>
+          <div class="crop-handle" data-edge="tr"></div>
+          <div class="crop-handle" data-edge="bl"></div>
+          <div class="crop-handle" data-edge="br"></div>
+          <div class="crop-handle" data-edge="t"></div>
+          <div class="crop-handle" data-edge="b"></div>
+          <div class="crop-handle" data-edge="l"></div>
+          <div class="crop-handle" data-edge="r"></div>
+        </div>
+      </div>
     </div>
     <div class="zoom-controls">
       <button id="zoom-out" title="缩小">−</button>
