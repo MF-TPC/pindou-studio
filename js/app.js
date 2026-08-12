@@ -90,8 +90,9 @@
           img.onload = function() {
             var p = getPalette(S.paletteId);
             var lp = precomputeLab(p.colors);
-            showLoading('正在识别图纸...');
-            importPatternImage(img, lp, S.converter).then(function(result) {
+            var useOCR = $('#ocr-toggle').checked;
+            showLoading(useOCR ? '正在识别(OCR增强)...' : '正在识别图纸...');
+            importPatternImage(img, lp, S.converter, useOCR).then(function(result) {
             hideLoading();
             if (!result || !result.matrix) { toast('识别失败', 'error'); return; }
             S.matrix = result.matrix;
@@ -349,8 +350,9 @@
   function importFromImage(img) {
     var p = getPalette(S.paletteId);
     var lp = precomputeLab(p.colors);
-    showLoading('正在识别图纸...');
-    importPatternImage(img, lp, S.converter).then(function(result) {
+    var useOCR = $('#ocr-toggle').checked;
+    showLoading(useOCR ? '正在识别(OCR增强)...' : '正在识别图纸...');
+    importPatternImage(img, lp, S.converter, useOCR).then(function(result) {
       hideLoading();
       if (!result || !result.matrix) { toast('识别失败，请重试', 'error'); return; }
       var d = result.details || {};

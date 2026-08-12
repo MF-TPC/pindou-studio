@@ -37,7 +37,11 @@
       </div>
       <input type="file" id="file-input" accept="image/*" hidden>
       <button class="btn btn-block btn-sm" id="upload-btn" style="margin-top:6px">📁 选择文件</button>
-      <button class="btn btn-block btn-sm btn-accent" id="import-pattern-btn" style="margin-top:4px">🔍 导入拼豆图纸</button>
+      <div class="toggle-row" style="margin:2px 0">
+        <span class="toggle-label">🧠 OCR增强 (慢)</span>
+        <label class="toggle-switch"><input type="checkbox" id="ocr-toggle"><span class="slider"></span></label>
+      </div>
+      <button class="btn btn-block btn-sm btn-accent" id="import-pattern-btn" style="margin-top:3px">🔍 导入拼豆图纸</button>
       <button class="btn btn-block btn-sm" id="crop-btn" style="margin-top:3px">✂️ 裁剪图纸</button>
       <div class="form-row" style="margin-top:3px">
         <button class="btn btn-sm" id="flip-h" style="flex:1">↔ 水平翻转</button>
@@ -306,7 +310,6 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="js/colormatch.js"></script>
 <script src="js/palettes.js"></script>
 <script src="js/dither.js"></script>
