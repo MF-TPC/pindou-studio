@@ -49,9 +49,21 @@
       </div>
       <button class="btn btn-block btn-sm" id="edit-undo" style="margin-top:3px">↩ 撤销编辑 (Ctrl+Z)</button>
       <button class="btn btn-block btn-sm btn-accent" id="save-to-vault" style="margin-top:3px">💾 保存到仓库</button>
+      <!-- 保存弹窗 -->
+      <div id="vault-save-dlg" style="display:none;margin-top:6px">
+        <input type="text" id="vault-name-input" placeholder="图纸名称" style="width:100%;margin-bottom:4px">
+        <button class="btn btn-sm btn-accent" id="vault-save-confirm" style="width:100%">确认保存</button>
+      </div>
       <div class="panel-section" id="vault-section" style="margin-top:8px;display:none">
         <div class="section-title">📦 图纸仓库</div>
         <ul class="vault-list" id="vault-list"></ul>
+      </div>
+
+      <!-- 数量校验面板 -->
+      <div class="panel-section" id="qc-section" style="display:none">
+        <div class="section-title">✅ 数量校验 <span style="font-weight:400;font-size:10px;color:var(--text-dim)">对照图纸输入实际数量</span></div>
+        <ul class="qc-list" id="qc-list"></ul>
+        <button class="btn btn-sm btn-block" id="qc-apply" style="margin-top:4px">确认校验</button>
       </div>
     </div>
 

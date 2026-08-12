@@ -203,7 +203,21 @@
     $('#flip-v').addEventListener('click', function() { flipMatrix('v'); });
 
     // Vault
-    $('#save-to-vault').addEventListener('click', saveToVault);
+    // Vault
+    $('#save-to-vault').addEventListener('click', function() {
+      if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
+      var dlg = $('#vault-save-dlg');
+      dlg.style.display = dlg.style.display === 'none' ? 'block' : 'none';
+      $('#vault-name-input').value = '图纸 ' + new Date().toLocaleDateString();
+      $('#vault-name-input').focus();
+    });
+    $('#vault-save-confirm').addEventListener('click', function() {
+      var name = $('#vault-name-input').value.trim();
+      if (!name) { toast('请输入名称', 'warn'); return; }
+      saveToVault(name);
+      $('#vault-save-dlg').style.display = 'none';
+    });
+    $('#qc-apply').addEventListener('click', applyQC);
     loadVaultList();
 
     // Board
@@ -503,6 +517,7 @@
       });
       list.appendChild(li);
     }
+    showQCPanel();
   }
 
   // ============ Board ============
@@ -925,9 +940,8 @@
     localStorage.setItem(VAULT_KEY, JSON.stringify(v));
   }
 
-  function saveToVault() {
+  function saveToVault(name) {
     if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
-    var name = prompt('图纸名称:', '图纸 ' + new Date().toLocaleDateString());
     if (!name) return;
     var vault = getVault();
     // 精简存储: 只存色号ID矩阵
@@ -946,6 +960,58 @@
     saveVault(vault);
     loadVaultList();
     toast('已保存: ' + name, 'success');
+  }
+
+  // ============ QC 数量校验 ============
+  function showQCPanel() {
+    if (!S.stats || !S.stats.colors) return;
+    var qc = $('#qc-section');
+    qc.style.display = 'block';
+    var list = $('#qc-list');
+    list.innerHTML = '';
+    for (var qi = 0; qi < S.stats.colors.length; qi++) {
+      var c = S.stats.colors[qi];
+      var li = document.createElement('li');
+      li.className = 'qc-item';
+      li.innerHTML = '<span class="qc-swatch" style="background:' + c.hex + '"></span>' +
+        '<span class="qc-id">' + c.id + '</span>' +
+        '<span class="qc-rec">识别: <b>' + c.count + '</b></span>' +
+        '<input type="number" class="qc-input" value="' + c.count + '" data-id="' + c.id + '" min="0" style="width:60px">';
+      list.appendChild(li);
+    }
+  }
+
+  function applyQC() {
+    if (!S.stats) return;
+    var inputs = document.querySelectorAll('.qc-input');
+    var mismatches = [];
+    for (var i = 0; i < inputs.length; i++) {
+      var inp = inputs[i];
+      var id = inp.getAttribute('data-id');
+      var actual = parseInt(inp.value) || 0;
+      var recognized = S.stats.colors.find(function(c) { return c.id === id; });
+      if (recognized && actual !== recognized.count) {
+        mismatches.push({ id: id, name: recognized.name, recognized: recognized.count, actual: actual, diff: actual - recognized.count });
+      }
+    }
+    if (mismatches.length === 0) {
+      toast('✅ 所有颜色数量一致，图纸无误', 'success');
+    } else {
+      var msg = '⚠️ ' + mismatches.length + ' 项不一致:';
+      for (var mi = 0; mi < Math.min(mismatches.length, 5); mi++) {
+        var m = mismatches[mi];
+        msg += ' ' + m.id + '(识' + m.recognized + '/实' + m.actual + ')';
+      }
+      if (mismatches.length > 5) msg += ' ...';
+      toast(msg, 'warn');
+      // 高亮差异项
+      for (var j = 0; j < inputs.length; j++) {
+        var inp2 = inputs[j];
+        var id2 = inp2.getAttribute('data-id');
+        var mm = mismatches.find(function(x) { return x.id === id2; });
+        inp2.style.background = mm ? '#fff0f0' : '#f0fff0';
+      }
+    }
   }
 
   function loadVaultList() {

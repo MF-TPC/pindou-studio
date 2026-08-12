@@ -296,6 +296,17 @@ input[type="range"] { width: 100%; accent-color: var(--primary); }
 }
 .focus-btn-exit:hover { background: rgba(255,255,255,0.2); color: #fff; }
 
+/* ============ QC Panel ============ */
+.qc-list { max-height: 250px; overflow-y: auto; }
+.qc-item { display: flex; align-items: center; gap: 6px; padding: 3px 2px;
+  font-size: 12px; border-bottom: 1px solid var(--border); }
+.qc-item:last-child { border-bottom: none; }
+.qc-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0; }
+.qc-id { font-family: var(--font-mono); font-weight: 600; min-width: 28px; }
+.qc-rec { color: var(--text-dim); font-size: 11px; min-width: 50px; }
+.qc-input { width: 55px; padding: 2px 4px; border: 1px solid var(--border); border-radius: 3px;
+  font-size: 12px; text-align: center; }
+
 /* ============ Vault ============ */
 .vault-list { max-height: 200px; overflow-y: auto; }
 .vault-item { display: flex; align-items: center; gap: 6px; padding: 4px 2px;
