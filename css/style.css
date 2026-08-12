@@ -20,6 +20,14 @@
 [data-theme="dark"] .focus-overlay { background: #111; }
 [data-theme="dark"] .focus-bar { background: #1a1a1a; }
 [data-theme="dark"] .zoom-ctrl { background: var(--surf); }
+[data-theme="dark"] .batch-color-name { text-shadow: 0 0 8px rgba(255,255,255,0.3); }
+[data-theme="dark"] .qc-input { background: #2a2824; color: var(--txt); }
+[data-theme="dark"] .cp-swatch { text-shadow: 0 0 2px rgba(0,0,0,0.6); }
+[data-theme="dark"] input[type=number] { background: #2a2824; color: var(--txt); }
+[data-theme="dark"] select { background: #2a2824; color: var(--txt); }
+[data-theme="dark"] .vault-load { background: var(--surf); color: var(--txt); }
+[data-theme="dark"] .vault-del { background: var(--surf); color: var(--txt); }
+[data-theme="dark"] .bo-arr { background: var(--surf); color: var(--txt); }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;font:13px/1.5 var(--font);color:var(--txt);background:var(--bg)}
 button,input,select{font:inherit}

@@ -576,7 +576,10 @@
 
     if (batch) {
       $('#batch-color').textContent = batch.colorId + ' ' + batch.colorName;
-      $('#batch-color').style.color = batch.hex;
+      var bc = batch.hex;
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (isDark) { var rgb = batch.rgb || [128,128,128]; var bright = rgb[0]*0.299+rgb[1]*0.587+rgb[2]*0.114; if (bright < 130) bc = '#ffffff'; }
+      $('#batch-color').style.color = bc;
       $('#batch-count').textContent = batch.positions.length;
       $('#batch-progress').textContent = `第 ${batch.index + 1} / ${batch.total} 批`;
     } else {
