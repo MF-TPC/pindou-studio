@@ -32,6 +32,7 @@
   function init() {
     syncConverter();
     bindEvents();
+    $('#guide-offset-label').textContent = '4格';
     updateBoardPreview();
     switchMode('convert');
     showPlaceholder();
