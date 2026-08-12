@@ -30,6 +30,19 @@
 
   // ============ Init ============
   function init() {
+    // 主题
+    var saved = localStorage.getItem('pindou-theme');
+    if (!saved) saved = window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', saved);
+    $('#theme-toggle').textContent = saved === 'dark' ? '☀️' : '🌙';
+    $('#theme-toggle').addEventListener('click', function() {
+      var cur = document.documentElement.getAttribute('data-theme');
+      var next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      $('#theme-toggle').textContent = next === 'dark' ? '☀️' : '🌙';
+      localStorage.setItem('pindou-theme', next);
+    });
+
     syncConverter();
     bindEvents();
     $('#guide-offset-label').textContent = '4格';
