@@ -90,8 +90,10 @@
           img.onload = function() {
             var p = getPalette(S.paletteId);
             var lp = precomputeLab(p.colors);
-            toast('正在识别图纸...', 'info');
+            showLoading('正在识别图纸...');
             importPatternImage(img, lp, S.converter).then(function(result) {
+            hideLoading();
+            if (!result || !result.matrix) { toast('识别失败', 'error'); return; }
             S.matrix = result.matrix;
             S.targetW = result.matrix[0] ? result.matrix[0].length : 29;
             S.targetH = result.matrix.length;
@@ -114,7 +116,11 @@
             } else {
               toast(msg, 'success');
             }
-            }); // end .then
+            }).catch(function(err) {
+              hideLoading();
+              console.error(err);
+              toast('识别出错: ' + (err.message || '未知'), 'error');
+            });
           };
           img.onerror = function() { toast('图片加载失败', 'error'); };
           img.src = e.target.result;
@@ -343,19 +349,25 @@
   function importFromImage(img) {
     var p = getPalette(S.paletteId);
     var lp = precomputeLab(p.colors);
-    toast('正在识别图纸...', 'info');
+    showLoading('正在识别图纸...');
     importPatternImage(img, lp, S.converter).then(function(result) {
+      hideLoading();
+      if (!result || !result.matrix) { toast('识别失败，请重试', 'error'); return; }
       var d = result.details || {};
       var msg = '导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | 颜色:' + (d.colorHits||0) + ' | 图例:' + (d.legendSize||0);
-      if (d.tesseractLegendHits) msg += ' | Tesseract图例:' + d.tesseractLegendHits;
+      if (d.tesseractLegendHits) msg += ' | Tess:' + d.tesseractLegendHits;
       msg += ' [' + (result.confidence || 'ok') + ']';
       if (result.validation && result.validation.length > 0) {
-        msg += ' ⚠️ 差异:';
-        for (var vi = 0; vi < Math.min(result.validation.length, 3); vi++)
+        msg += ' ⚠️';
+        for (var vi = 0; vi < Math.min(result.validation.length, 2); vi++)
           msg += ' ' + result.validation[vi].id + '(' + result.validation[vi].recognized + '/' + result.validation[vi].expected + ')';
         toast(msg, 'warn');
       } else { toast(msg, 'success'); }
       enterAssistMode(result.matrix);
+    }).catch(function(err) {
+      hideLoading();
+      console.error(err);
+      toast('识别出错: ' + (err.message || '未知错误'), 'error');
     });
   }
 
@@ -712,6 +724,17 @@
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  var _loading = false;
+  function showLoading(msg) {
+    _loading = true;
+    $('#loading-text').textContent = msg || '加载中...';
+    $('#loading-bar').style.display = 'block';
+  }
+  function hideLoading() {
+    _loading = false;
+    $('#loading-bar').style.display = 'none';
   }
 
   let t;
