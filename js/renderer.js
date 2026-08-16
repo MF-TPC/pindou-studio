@@ -35,21 +35,8 @@ function createRenderer() {
         else drawSymbol(ctx, cx, cy, cs, cell);
       }
     }
-    if (boardConfig) {
-      var lines = computeGuideLines(boardConfig);
-      ctx.strokeStyle = O.boardLineColor; ctx.lineWidth = 2.0; ctx.beginPath();
-      for (var gi = 0; gi < lines.h.length; gi++) {
-        var gy = lines.h[gi];
-        if (gy < h) { var py = pad + gy * cs; ctx.moveTo(pad, py); ctx.lineTo(pad + w * cs, py); }
-      }
-      for (var gj = 0; gj < lines.v.length; gj++) {
-        var gx = lines.v[gj];
-        if (gx < w) { var px = pad + gx * cs; ctx.moveTo(px, pad); ctx.lineTo(px, pad + h * cs); }
-      }
-      ctx.stroke();
-    }
     if (O.showGrid) drawGrid(ctx, pad, w, h, cs);
-    if (cs >= 12) drawLabels(ctx, pad, w, h, cs);
+    drawLabels(ctx, pad, w, h, cs);
     copy(canvas, off);
   }
 
@@ -184,11 +171,30 @@ function drawGrid(ctx, pad, w, h, cs) {
   ctx.stroke();
 }
 function drawLabels(ctx, pad, w, h, cs) {
-  var fs = Math.max(8, cs * 0.4);
-  ctx.font = fs + 'px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#999';
-  for (var x = 0; x < w; x++) { if (x % 5 === 0) ctx.fillText(String(x + 1), pad + x * cs + cs / 2, pad - cs * 0.45); }
+  var fs = Math.max(9, cs * 0.42);
+  ctx.font = fs + 'px monospace'; ctx.fillStyle = '#666';
+
+  // 顶部列号 (每5格 + 末格)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (var x = 0; x < w; x++) {
+    if (x % 5 === 0 || x === w - 1) {
+      ctx.fillText(String(x + 1), pad + x * cs + cs / 2, pad - cs * 0.5);
+    }
+  }
+
+  // 左侧行号
   ctx.textAlign = 'right';
-  for (var y = 0; y < h; y++) { if (y % 5 === 0) ctx.fillText(String(y + 1), pad - cs * 0.3, pad + y * cs + cs / 2); }
+  for (var y = 0; y < h; y++) {
+    if (y % 5 === 0 || y === h - 1) {
+      ctx.fillText(String(y + 1), pad - cs * 0.35, pad + y * cs + cs / 2);
+    }
+  }
+
+  // 底部中央: 总尺寸标注
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.font = 'bold ' + Math.max(10, cs * 0.45) + 'px sans-serif';
+  ctx.fillStyle = '#e8724a';
+  ctx.fillText(w + ' 列 × ' + h + ' 行', pad + w * cs / 2, pad + h * cs + cs * 0.15);
 }
 function copy(target, source) {
   target.width = source.width; target.height = source.height;

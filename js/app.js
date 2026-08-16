@@ -15,7 +15,11 @@
     // Convert
     image: null, patternImage: null, matrix: null, stats: null, converter: null,
     paletteId: 'mard-221', targetW: 58, targetH: 58,
-    matchAlgo: 'median-cut',
+    maxColors: 0,
+    importValidation: null, // 图例交叉验证结果
+    legendOCR: [], // OCR 解析出的图例 [{id, qty}]
+    framedReady: false, // 框选完成，待调长宽后解析
+    legendSort: 'count-desc', // 图例排序模式
     renderStyle: 'symbol', showGrid: true, cellSize: 20,
     zoom: 1, lockAspect: false, aspectRatio: 1,
 
@@ -41,6 +45,17 @@
       document.documentElement.setAttribute('data-theme', next);
       $('#theme-toggle').textContent = next === 'dark' ? '☀️' : '🌙';
       localStorage.setItem('pindou-theme', next);
+    });
+
+    // 说明书
+    $('#help-btn').addEventListener('click', function() {
+      $('#help-overlay').classList.remove('hidden');
+    });
+    $('#help-close').addEventListener('click', function() {
+      $('#help-overlay').classList.add('hidden');
+    });
+    $('#help-overlay').addEventListener('click', function(e) {
+      if (e.target === this) this.classList.add('hidden');
     });
 
     syncConverter();
@@ -82,15 +97,16 @@
 
     // Image import
     const dz = $('#drop-zone');
+    dz.addEventListener('click', () => $('#file-input').click());
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
     dz.addEventListener('drop', e => {
       e.preventDefault(); dz.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0], false);
+      if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]);
     });
     $('#upload-btn').addEventListener('click', () => $('#file-input').click());
     $('#file-input').addEventListener('change', () => {
-      if ($('#file-input').files[0]) loadImage($('#file-input').files[0], false);
+      if ($('#file-input').files[0]) loadImage($('#file-input').files[0]);
     });
     $('#import-pattern-btn').addEventListener('click', () => {
       var inp = document.createElement('input');
@@ -101,40 +117,7 @@
         reader.onload = function(e) {
           var img = new Image();
           img.onload = function() {
-            var p = getPalette(S.paletteId);
-            var lp = precomputeLab(p.colors);
-            var useOCR = $('#ocr-toggle').checked;
-            showLoading(useOCR ? '正在识别(OCR增强)...' : '正在识别图纸...');
-            importPatternImage(img, lp, S.converter, useOCR).then(function(result) {
-            hideLoading();
-            if (!result || !result.matrix) { toast('识别失败', 'error'); return; }
-            S.matrix = result.matrix;
-            S.targetW = result.matrix[0] ? result.matrix[0].length : 29;
-            S.targetH = result.matrix.length;
-            $('#width-input').value = S.targetW;
-            $('#height-input').value = S.targetH;
-            S.stats = S.converter.getStats(S.matrix);
-            S.image = null;
-            S.patternImage = img; // 存原图，允许后续改尺寸重解析
-            updateRendererOpts(); renderConvert(); updateStatsPanel();
-            $('#drop-zone').classList.add('has-image');
-            var d = result.details || {};
-            var msg = '图纸导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | OCR:' + (d.ocrHits||0) + ' [' + result.confidence + ']';
-            if (result.validation && result.validation.length > 0) {
-              msg += ' ⚠️ 校验差异:';
-              for (var vi = 0; vi < Math.min(result.validation.length, 3); vi++) {
-                var vm = result.validation[vi];
-                msg += ' ' + vm.id + '(' + vm.recognized + '/' + vm.expected + ')';
-              }
-              toast(msg, 'warn');
-            } else {
-              toast(msg, 'success');
-            }
-            }).catch(function(err) {
-              hideLoading();
-              console.error(err);
-              toast('识别出错: ' + (err.message || '未知'), 'error');
-            });
+            enterWizardMode(img);
           };
           img.onerror = function() { toast('图片加载失败', 'error'); };
           img.src = e.target.result;
@@ -146,15 +129,15 @@
     document.addEventListener('paste', e => {
       for (const it of e.clipboardData?.items || []) {
         if (it.type.startsWith('image/')) {
-          e.preventDefault(); loadImage(it.getAsFile(), false); break;
+          e.preventDefault(); loadImage(it.getAsFile()); break;
         }
       }
     });
 
-    // Match algo
-    $('#match-algo').addEventListener('change', () => {
-      S.matchAlgo = $('#match-algo').value;
-      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
+    // Legend sort
+    $('#legend-sort').addEventListener('change', () => {
+      S.legendSort = $('#legend-sort').value;
+      updateStatsPanel();
     });
 
     // Palette
@@ -170,7 +153,9 @@
         S.targetH = clamp(1, 500, Math.round(S.targetW / S.aspectRatio));
         $('#height-input').value = S.targetH;
       }
-      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
+      if (_framePatternCanvas) reGridifyFramed();
+      else if (S.patternImage) resampleFromStored();
+      else if (S.image) doConvert();
     });
     $('#height-input').addEventListener('input', () => {
       S.targetH = clamp(1, 500, parseInt($('#height-input').value) || 29);
@@ -178,7 +163,9 @@
         S.targetW = clamp(1, 500, Math.round(S.targetH * S.aspectRatio));
         $('#width-input').value = S.targetW;
       }
-      if (S.patternImage) resampleFromStored(); else if (S.image) doConvert();
+      if (_framePatternCanvas) reGridifyFramed();
+      else if (S.patternImage) resampleFromStored();
+      else if (S.image) doConvert();
     });
     $('#aspect-lock').addEventListener('click', () => {
       S.lockAspect = !S.lockAspect;
@@ -256,13 +243,7 @@
     });
     $('#apply-board').addEventListener('click', applyBoardConfig);
 
-    // Assist import
-    $('#asst-import-img').addEventListener('click', () => {
-      const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*';
-      inp.onchange = () => { if (inp.files[0]) loadImage(inp.files[0], true); };
-      inp.click();
-    });
+    // Assist import (仅从转换结果导入)
     $('#asst-from-conv').addEventListener('click', () => {
       if (!S.matrix) { toast('请先在转换模式生成图纸', 'warn'); return; }
       enterAssistMode(S.matrix);
@@ -288,9 +269,10 @@
     $('#shift-left').addEventListener('click', function() { shiftPattern(-1, 0); });
     $('#shift-right').addEventListener('click', function() { shiftPattern(1, 0); });
 
-    // Canvas click: assist=toggle, convert=edit cell
+    // Canvas click: bg-edit=切背景, assist=toggle, convert=edit cell
     $('#preview-canvas').addEventListener('click', e => {
       if (_cropMode) return;
+      if (_bgEditMode) { bgEditCellAtEvent(e); return; }
       if (S.mode === 'assist') { handleCanvasClick(e); return; }
       editCellAtEvent(e);
     });
@@ -311,6 +293,7 @@
     $('#preview-canvas').addEventListener('contextmenu', e => {
       e.preventDefault();
       if (_cropMode) return;
+      if (_bgEditMode) { bgEditCellAtEvent(e); return; }
       if (S.mode === 'assist') { handleCanvasClick(e); return; }
       editCellAtEvent(e);
     });
@@ -350,12 +333,12 @@
   }
 
   // ============ Image ============
-  function loadImage(file, forAssist) {
+  function loadImage(file) {
     if (!file || !file.type.startsWith('image/')) { toast('请选择图片文件', 'warn'); return; }
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
-      img.onload = () => forAssist ? importFromImage(img) : loadConvertImage(img);
+      img.onload = () => loadConvertImage(img);
       img.onerror = () => toast('图片加载失败', 'error');
       img.src = e.target.result;
     };
@@ -374,39 +357,18 @@
     $('#drop-zone').classList.add('has-image');
   }
 
-  function importFromImage(img) {
-    var p = getPalette(S.paletteId);
-    var lp = precomputeLab(p.colors);
-    var useOCR = $('#ocr-toggle').checked;
-    showLoading(useOCR ? '正在识别(OCR增强)...' : '正在识别图纸...');
-    importPatternImage(img, lp, S.converter, useOCR).then(function(result) {
-      hideLoading();
-      if (!result || !result.matrix) { toast('识别失败，请重试', 'error'); return; }
-      var d = result.details || {};
-      var msg = '导入: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | 颜色:' + (d.colorHits||0) + ' | 图例:' + (d.legendSize||0);
-      if (d.tesseractLegendHits) msg += ' | Tess:' + d.tesseractLegendHits;
-      msg += ' [' + (result.confidence || 'ok') + ']';
-      if (result.validation && result.validation.length > 0) {
-        msg += ' ⚠️';
-        for (var vi = 0; vi < Math.min(result.validation.length, 2); vi++)
-          msg += ' ' + result.validation[vi].id + '(' + result.validation[vi].recognized + '/' + result.validation[vi].expected + ')';
-        toast(msg, 'warn');
-      } else { toast(msg, 'success'); }
-      enterAssistMode(result.matrix);
-    }).catch(function(err) {
-      hideLoading();
-      console.error(err);
-      toast('识别出错: ' + (err.message || '未知错误'), 'error');
-    });
-  }
-
   // ============ Convert ============
   function doConvert() {
     if (!S.image || !S.converter) return;
-    S.patternImage = null; // 原图转换清除图纸标记
-    const r = S.converter.convert(S.image, S.targetW, S.targetH, S.matchAlgo);
+    S.patternImage = null;
+    showLoading('正在转换...');
+    var r = S.converter.convert(S.image, S.targetW, S.targetH, {
+      maxColors: S.maxColors || 0,
+    });
     S.matrix = r.matrix; S.stats = r.stats;
+    S.importValidation = null;
     updateRendererOpts(); renderConvert(); updateStatsPanel();
+    hideLoading();
   }
 
   function resampleFromStored() {
@@ -416,9 +378,10 @@
     var result = resamplePatternImage(S.patternImage, S.targetW, S.targetH, lp, S.converter);
     S.matrix = result.matrix;
     S.stats = S.converter.getStats(S.matrix);
+    S.importValidation = null;
     updateRendererOpts(); renderConvert(); updateStatsPanel();
     var d = result.details || {};
-    toast('重采样: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' | OCR:' + (d.ocrHits||0) + ' [' + result.confidence + ']', 'info');
+    toast('重采样: ' + (d.rows||'?') + '×' + (d.cols||'?') + ' [' + result.confidence + ']', 'info');
   }
 
   function setStyle(s) {
@@ -437,20 +400,24 @@
 
   function renderConvert() {
     if (!S.matrix) return;
-    if (S.zoom === 1) renderer.renderConvert($('#preview-canvas'), S.matrix, S.boardConfig);
-    else renderer.renderZoomed($('#preview-canvas'), S.matrix, S.zoom, S.boardConfig);
-    $('#preview-canvas').classList.remove('empty');
+    var c = $('#preview-canvas');
+    c.style.width = ''; c.style.height = ''; // 清除框选预览残留的缩放
+    if (S.zoom === 1) renderer.renderConvert(c, S.matrix, S.boardConfig);
+    else renderer.renderZoomed(c, S.matrix, S.zoom, S.boardConfig);
+    c.classList.remove('empty');
     fixScroll();
   }
 
   function renderAssist() {
     if (!S.assistant) return;
+    var c = $('#preview-canvas');
+    c.style.width = ''; c.style.height = '';
     renderer.renderAssist(
-      $('#preview-canvas'), S.assistant.getPaddedMatrix(),
+      c, S.assistant.getPaddedMatrix(),
       S.assistant.getStatusMatrix(), S.boardConfig,
       S.assistant.getIsolated(), S.zoom
     );
-    $('#preview-canvas').classList.remove('empty');
+    c.classList.remove('empty');
     fixScroll();
   }
 
@@ -506,6 +473,43 @@
   }
 
   // ============ Stats ============
+  function updateImportStatus(result) {
+    var el = $('#import-status');
+    if (!el) return;
+    if (!result) { el.innerHTML = ''; return; }
+    var d = result.details || {};
+    var html = '尺寸 ' + (d.rows || '?') + '×' + (d.cols || '?') + ' · 命中率 ' + (d.hitRate || '?') + '%';
+    if (result.legend && result.legend.length) {
+      html += '<br>图例 ' + result.legend.length + ' 色 · 读数量 ' + (d.legendQtyCount || 0) + ' / ' + result.legend.length;
+      if (d.ocrUsed) html += ' · 🧠OCR';
+    }
+    if (result.validation && result.validation.length) {
+      html += ' · ⚠️ 差异 ' + result.validation.length + ' 项';
+    } else if (result.legend && result.legend.length) {
+      html += ' · ✅ 数量吻合';
+    }
+    el.innerHTML = html;
+  }
+
+  function sortColors(colors, mode) {
+    const sorted = colors.slice();
+    if (mode === 'count-asc') {
+      sorted.sort((a, b) => a.count - b.count);
+    } else if (mode === 'id') {
+      sorted.sort((a, b) => {
+        const ga = (a.category && a.category !== '?') ? a.category : a.id.replace(/\d/g, '');
+        const gb = (b.category && b.category !== '?') ? b.category : b.id.replace(/\d/g, '');
+        if (ga !== gb) return ga < gb ? -1 : 1;
+        const na = parseInt(a.id.replace(/\D/g, '')) || 0;
+        const nb = parseInt(b.id.replace(/\D/g, '')) || 0;
+        return na - nb;
+      });
+    } else {
+      sorted.sort((a, b) => b.count - a.count);
+    }
+    return sorted;
+  }
+
   function updateStatsPanel() {
     if (!S.stats) return;
     const st = S.stats;
@@ -515,7 +519,7 @@
     $('#stats-panel').classList.remove('hidden');
     const list = $('#legend-list');
     list.innerHTML = '';
-    for (const c of st.colors) {
+    for (const c of sortColors(st.colors, S.legendSort)) {
       const li = document.createElement('li'); li.className = 'legend-item';
       li.innerHTML = `<span class="legend-swatch" style="background:${c.hex}"></span>
         <span class="legend-id">${c.id}</span><span class="legend-name">${c.name}</span>
@@ -586,6 +590,21 @@
       $('#batch-color').textContent = '—';
       $('#batch-count').textContent = '0';
       $('#batch-progress').textContent = '全部完成 ✓';
+    }
+
+    // 进度条
+    var completedTotal = 0, patternTotal = 0;
+    for (var oi = 0; oi < overview.length; oi++) {
+      patternTotal += overview[oi].count;
+      if (overview[oi].status === 'completed') completedTotal += overview[oi].count;
+    }
+    if (patternTotal > 0) {
+      var pct = Math.round(completedTotal / patternTotal * 100);
+      $('#progress-wrap').style.display = 'block';
+      $('#progress-fill').style.width = pct + '%';
+      $('#progress-text').textContent = completedTotal + ' / ' + patternTotal + ' 颗 (' + pct + '%)';
+    } else {
+      $('#progress-wrap').style.display = 'none';
     }
 
     const bl = $('#batch-list');
@@ -691,8 +710,8 @@
   function revertBatch() {
     if (!S.assistant) return;
     var r = S.assistant.revertBatch();
-    if (r.atStart && !r.batch) { toast('已是第一步', 'warn'); return; }
     renderAssist(); updateAssistUI();
+    if (r.atStart && !r.batch) { toast('已回到初始空白状态', 'info'); return; }
     if (r.batch) toast('已撤销到: ' + r.batch.colorName, 'info');
   }
 
@@ -740,14 +759,23 @@
   function clamp(min, max, v) { return Math.max(min, Math.min(max, v)); }
 
   function showPlaceholder() {
-    const c = $('#preview-canvas'); c.width = 400; c.height = 280;
+    const c = $('#preview-canvas');
+    const area = $('#canvas-area');
+    const aw = area.clientWidth || 600;
+    const ah = area.clientHeight || 420;
+    c.width = Math.max(300, aw - 16);
+    c.height = Math.max(240, ah - 16);
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#f5f3f0'; ctx.fillRect(0, 0, 400, 280);
-    ctx.fillStyle = '#bbb'; ctx.font = '15px sans-serif';
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ctx.fillStyle = dark ? '#262420' : '#f5f3f0';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = dark ? '#6a655a' : '#b0ada5';
+    ctx.font = '16px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('拖拽图片或点击上传开始', 200, 130);
-    ctx.fillText('支持 Ctrl+V 粘贴', 200, 155);
+    ctx.fillText('拖拽图片或点击上传开始', c.width / 2, c.height / 2 - 14);
+    ctx.fillText('支持 Ctrl+V 粘贴', c.width / 2, c.height / 2 + 14);
     c.classList.add('empty');
+    fixScroll();
   }
 
   function downloadBlob(content, filename, type) {
@@ -758,6 +786,9 @@
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   }
+
+  // PaddleOCR 实例缓存 (用量统计区 OCR 用)
+  var _paddleOcr = null;
 
   var _loading = false;
   function showLoading(msg) {
@@ -797,7 +828,7 @@
     div.style.left = Math.min(x, window.innerWidth - 260) + 'px';
     div.style.top = Math.min(y, window.innerHeight - 400) + 'px';
 
-    var html = '<div class="cp-header">选择色号 <button class="cp-close">&times;</button></div>';
+    var html = '<div class="cp-header">选择色号 <button class="cp-bg" id="cp-bg-btn">🗑 背景</button> <button class="cp-close">&times;</button></div>';
     var entries = Object.entries(groups);
     for (var gi = 0; gi < entries.length; gi++) {
       var group = entries[gi];
@@ -818,6 +849,15 @@
     };
 
     div.querySelector('.cp-close').onclick = close;
+
+    var bgBtn = div.querySelector('#cp-bg-btn');
+    if (bgBtn) {
+      bgBtn.onclick = function(e) {
+        e.stopPropagation();
+        close();
+        callback(null); // null 表示背景
+      };
+    }
 
     var swatches = div.querySelectorAll('.cp-swatch');
     for (var si = 0; si < swatches.length; si++) {
@@ -867,31 +907,31 @@
       for (var x = 0; x < S.matrix[y].length; x++) {
         var c = S.matrix[y][x];
         if (c && c.id === fromId) {
-          S.matrix[y][x] = {
+          S.matrix[y][x] = toColor ? {
             id: toColor.id, name: toColor.id,
             hex: toColor.hex, rgb: toColor.rgb,
             category: toColor.group || '?',
-          };
+          } : null; // null = 背景
           count++;
         }
       }
     }
     S.stats = S.converter.getStats(S.matrix);
     updateRendererOpts(); renderConvert(); updateStatsPanel();
-    toast('已替换 ' + count + ' 个: ' + fromId + ' → ' + toColor.id, 'success');
+    toast('已替换 ' + count + ' 个: ' + fromId + ' → ' + (toColor ? toColor.id : '背景'), 'success');
   }
 
   function replaceCell(x, y, toColor) {
     if (!S.matrix) return;
     saveUndo();
-    S.matrix[y][x] = {
+    S.matrix[y][x] = toColor ? {
       id: toColor.id, name: toColor.id,
       hex: toColor.hex, rgb: toColor.rgb,
       category: toColor.group || '?',
-    };
+    } : null; // null = 背景
     S.stats = S.converter.getStats(S.matrix);
     updateRendererOpts(); renderConvert(); updateStatsPanel();
-    toast('(' + (x+1) + ',' + (y+1) + ') → ' + toColor.id, 'success');
+    toast('(' + (x+1) + ',' + (y+1) + ') → ' + (toColor ? toColor.id : '背景'), 'success');
   }
 
   function undoEdit() {
@@ -918,6 +958,27 @@
   document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && S.mode === 'convert') {
       e.preventDefault(); undoEdit();
+    }
+    // Space = 下一批 (辅助模式)
+    if (e.key === ' ' && S.mode === 'assist' && !_focusActive) {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) return;
+      e.preventDefault();
+      advanceBatch();
+    }
+    // 方向键 = 移动图案 (辅助模式)
+    if (S.mode === 'assist' && S.assistant) {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) return;
+      var dx = 0, dy = 0;
+      if (e.key === 'ArrowUp') dy = -1;
+      else if (e.key === 'ArrowDown') dy = 1;
+      else if (e.key === 'ArrowLeft') dx = -1;
+      else if (e.key === 'ArrowRight') dx = 1;
+      if (dx !== 0 || dy !== 0) {
+        e.preventDefault();
+        S.shiftX += dx; S.shiftY += dy;
+        S.assistant = createAssistant(S.colorMatrix, S.boardConfig, S.shiftX, S.shiftY);
+        renderAssist(); updateAssistUI();
+      }
     }
   });
 
@@ -978,22 +1039,84 @@
     toast('已保存: ' + name, 'success');
   }
 
-  // ============ QC 数量校验 ============
+  // ============ QC 数量校验 (以图例为准，显示差值) ============
   function showQCPanel() {
     if (!S.stats || !S.stats.colors) return;
     var qc = $('#qc-section');
     qc.style.display = 'block';
     var list = $('#qc-list');
     list.innerHTML = '';
-    for (var qi = 0; qi < S.stats.colors.length; qi++) {
-      var c = S.stats.colors[qi];
+
+    // 图案读数映射 (id → color对象)
+    var patternMap = {};
+    for (var pi = 0; pi < S.stats.colors.length; pi++) {
+      patternMap[S.stats.colors[pi].id] = S.stats.colors[pi];
+    }
+
+    // 图例(图纸用量)读数映射，优先 OCR，回退旧 importValidation
+    var legendQty = {};
+    if (S.legendOCR && S.legendOCR.length) {
+      for (var oi = 0; oi < S.legendOCR.length; oi++) {
+        var le = S.legendOCR[oi];
+        if (le.qty !== null && le.qty !== undefined) legendQty[le.id] = le.qty;
+      }
+    } else if (S.importValidation) {
+      for (var vi2 = 0; vi2 < S.importValidation.length; vi2++) {
+        var vm = S.importValidation[vi2];
+        legendQty[vm.id] = vm.expected;
+      }
+    }
+
+    // 并集 (图案 ∪ 图例)，按色号排序
+    var allIds = {};
+    for (var id in patternMap) allIds[id] = true;
+    for (var id2 in legendQty) allIds[id2] = true;
+    var ids = Object.keys(allIds).sort();
+
+    var lp = S.converter ? S.converter.labPalette : [];
+    var mismatches = [], matches = [];
+
+    for (var k = 0; k < ids.length; k++) {
+      var cid = ids[k];
+      var pat = patternMap[cid];
+      var leg = legendQty[cid];
+      var patCount = pat ? pat.count : 0;
+      var legCount = (leg !== undefined) ? leg : 0;
+      var diff = patCount - legCount; // 图案 − 图纸用量
+
+      var hex = pat ? pat.hex : '#ccc';
+      if (!pat) {
+        var def = lp.find(function(c) { return c.id === cid; });
+        if (def) hex = def.hex;
+      }
+
+      var entry = { id: cid, hex: hex, legCount: legCount, diff: diff };
+      if (diff === 0) matches.push(entry);
+      else mismatches.push(entry);
+    }
+
+    // 不一致的按差值量降序(差得多在上)，一致的沉底
+    mismatches.sort(function(a, b) { return Math.abs(b.diff) - Math.abs(a.diff); });
+    var ordered = mismatches.concat(matches);
+    for (var i = 0; i < ordered.length; i++) {
+      var e = ordered[i];
       var li = document.createElement('li');
-      li.className = 'qc-item';
-      li.innerHTML = '<span class="qc-swatch" style="background:' + c.hex + '"></span>' +
-        '<span class="qc-id">' + c.id + '</span>' +
-        '<span class="qc-rec">识别: <b>' + c.count + '</b></span>' +
-        '<input type="number" class="qc-input" value="' + c.count + '" data-id="' + c.id + '" min="0" style="width:60px">';
+      li.className = 'qc-item' + (e.diff === 0 ? ' qc-match' : ' qc-mismatch');
+      var diffText = (e.diff === 0) ? '✓' : (e.diff > 0 ? '多' + e.diff : '少' + Math.abs(e.diff));
+      li.innerHTML = '<span class="qc-swatch" style="background:' + e.hex + '"></span>' +
+        '<span class="qc-id">' + e.id + '</span>' +
+        '<span class="qc-rec">图纸<b>' + e.legCount + '</b></span>' +
+        '<span class="qc-diff">' + diffText + '</span>' +
+        '<input type="number" class="qc-input" value="' + e.legCount + '" data-id="' + e.id + '" min="0" style="width:52px">';
       list.appendChild(li);
+    }
+
+    if (mismatches.length > 0) {
+      qc.querySelector('.p-label').textContent = '✅ 校验 (' + mismatches.length + '项差异)';
+    } else if (ids.length > 0) {
+      qc.querySelector('.p-label').textContent = '✅ 校验 (全部一致 ✓)';
+    } else {
+      qc.querySelector('.p-label').textContent = '✅ 数量校验';
     }
   }
 
@@ -1095,6 +1218,74 @@
   }
   var _cropMode = false, _cropRect = null, _cropDragEdge = null;
   var _cropStart = null, _cropOrigRect = null;
+
+  // ============ 扫雷插旗式背景编辑 ============
+  var _bgEditMode = false;
+  var _bgOrigMatrix = null;
+  var _baseMatrix = null; // 未限色的原始矩阵（最大颜色数编辑用）
+
+  function enterBgEditMode() {
+    if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
+    _bgEditMode = true;
+    // 用洪水填充前保存的原始矩阵恢复（若没有则从当前矩阵拷贝）
+    if (!_bgOrigMatrix) {
+      _bgOrigMatrix = S.matrix.map(function(row) {
+        return row.map(function(c) { return c ? { id: c.id, name: c.name, hex: c.hex, rgb: c.rgb, category: c.category } : null; });
+      });
+    }
+    $('#bg-edit-btn').textContent = '✅ 完成背景编辑';
+    $('#bg-edit-btn').classList.add('btn-accent');
+    toast('背景编辑中：点格子切换背景/恢复，点【完成】退出', 'info');
+  }
+
+  function exitBgEditMode() {
+    _bgEditMode = false;
+    _bgOrigMatrix = null;
+    $('#bg-edit-btn').textContent = '🧹 背景编辑';
+    $('#bg-edit-btn').classList.remove('btn-accent');
+    S.stats = S.converter.getStats(S.matrix);
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    toast('背景编辑完成', 'success');
+  }
+
+  // 应用"最大颜色数"（相近才并、独一无二保留），可重复调用
+  function applyMaxColors() {
+    if (!_baseMatrix) return;
+    var matrix = copyMatrix(_baseMatrix);
+    if (S.maxColors > 0) {
+      var cmap = recount(matrix);
+      enforceMaxColors(matrix, cmap, S.converter.labPalette, S.maxColors);
+    }
+    S.matrix = matrix;
+    S.stats = S.converter.getStats(matrix);
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+  }
+
+  function toggleBgCell(x, y) {
+    if (!S.matrix || !_bgOrigMatrix) return;
+    if (S.matrix[y][x]) {
+      S.matrix[y][x] = null; // 变背景
+    } else {
+      S.matrix[y][x] = _bgOrigMatrix[y][x]; // 恢复原色
+    }
+    renderConvert();
+  }
+
+  function bgEditCellAtEvent(e) {
+    var rc = $('#preview-canvas').getBoundingClientRect();
+    var cs = S.cellSize * S.zoom, pad = 3 * cs;
+    var sx = (e.clientX - rc.left) * ($('#preview-canvas').width / rc.width);
+    var sy = (e.clientY - rc.top) * ($('#preview-canvas').height / rc.height);
+    var cx = Math.floor((sx - pad) / cs), cy = Math.floor((sy - pad) / cs);
+    if (cx >= 0 && cy >= 0 && S.matrix[cy] && cx < S.matrix[cy].length) {
+      toggleBgCell(cx, cy);
+    }
+  }
+
+  $('#bg-edit-btn').addEventListener('click', function() {
+    if (_bgEditMode) exitBgEditMode();
+    else enterBgEditMode();
+  });
 
   function gridToPixel(gx, gy) {
     var cs = S.cellSize * S.zoom, pad = 3 * cs;
@@ -1273,6 +1464,666 @@
       _cropRect.bottom = parseInt($('#crop-bottom').value) || _cropRect.top + 1;
       updateCropBox();
     });
+  }
+
+  // ============ 框选模式 (图案内容橙框 + 用量统计蓝框) ============
+  var _frameMode = false;
+  var _frameImage = null;
+  var _frameScale = 1;
+  var _frameRects = {
+    pattern: { x0: 0, y0: 0, x1: 0, y1: 0 },
+    legend: { x0: 0, y0: 0, x1: 0, y1: 0 },
+  };
+  var _frameDragBox = null, _frameDragEdge = null, _frameStart = null, _frameOrig = null;
+  var _framePatternCanvas = null, _frameLegendCanvas = null;
+  var _frameGrid = null; // 网格定位结果 {grid, cols, rows, hasLeftNum, hasTopNum, hasRightNum, hasBottomNum}
+  var _gridCols = 0; // 用户拟合的格子列数（行数由框比例推出，格子线用浮点间距精确对齐）
+  var _sampleOffset = { dx: 0, dy: 0 }; // 采样点全局偏移 (图像像素)
+
+  function enterFrameMode(img) {
+    console.log('[frame] enterFrameMode', img.naturalWidth, img.naturalHeight);
+    _frameMode = true;
+    _frameImage = img;
+
+    var area = $('#canvas-area');
+    var aw = area.clientWidth - 48, ah = area.clientHeight - 48;
+    if (aw < 100) aw = 800;
+    if (ah < 100) ah = 600;
+    var iw = img.naturalWidth, ih = img.naturalHeight;
+    _frameScale = Math.max(0.05, Math.min(aw / iw, ah / ih, 1));
+    var dw = iw * _frameScale, dh = ih * _frameScale;
+
+    var canvas = $('#preview-canvas');
+    canvas.width = iw; canvas.height = ih;
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    canvas.style.width = dw + 'px';
+    canvas.style.height = dh + 'px';
+    canvas.classList.remove('empty');
+
+    // 自动吸附：网格线精确定位（失败逐级回退，不中断）
+    var m = 10;
+    var bounds = null, fdata = null;
+    try {
+      var fctx = canvas.getContext('2d');
+      fdata = fctx.getImageData(0, 0, iw, ih).data;
+      bounds = detectContentBounds(fdata, iw, ih);
+    } catch (e) { bounds = null; }
+
+    var gridBounds = null;
+    if (bounds && fdata) {
+      try { gridBounds = detectPatternGridBounds(fdata, iw, ih, bounds); }
+      catch (e) { gridBounds = null; }
+    }
+
+    _frameGrid = null;
+    _sampleOffset = { dx: 0, dy: 0 };
+    _gridCols = 0;
+    if (gridBounds) {
+      // 网格线精确定位：橙框=图案+编号圈全范围，蓝框顶边=交界处
+      _frameRects.pattern = { x0: gridBounds.x0, y0: gridBounds.y0, x1: gridBounds.x1, y1: gridBounds.y1 };
+      // 蓝框：左右/底下拉满，顶边=图案+编号圈最外围交界处
+      _frameRects.legend = { x0: 0, y0: gridBounds.junctionY, x1: iw, y1: ih };
+      _frameGrid = gridBounds; // 存全量：grid + cols/rows + hasLeftNum...
+      // 初始列数取自动检测值，用户可用 −/+ 微调拟合
+      _gridCols = gridBounds.cols;
+      var gd = currentGridDims();
+      if (gd) { S.targetW = gd.cols; S.targetH = gd.rows; }
+    } else if (bounds && (bounds.y1 - bounds.y0) > 40) {
+      // 回退：内容边界简单分割 (蓝框仍拉满)
+      var ph = bounds.y1 - bounds.y0;
+      _frameRects.pattern = { x0: bounds.x0, y0: bounds.y0, x1: bounds.x1, y1: bounds.y0 + Math.round(ph * 0.82) };
+      _frameRects.legend = { x0: 0, y0: bounds.y0 + Math.round(ph * 0.84), x1: iw, y1: ih };
+      // 网格精定位失败，用 detectGrid 估算列数兜底
+      var dg = null;
+      try { dg = detectGrid(fdata, iw, ih); } catch (e) { dg = null; }
+      _gridCols = (dg && dg.cellSize >= 3) ? Math.round((bounds.x1 - bounds.x0 + 1) / dg.cellSize) : 40;
+      var ed = currentGridDims();
+      if (ed && ed.cols >= 2 && ed.rows >= 2) { S.targetW = ed.cols; S.targetH = ed.rows; }
+    } else {
+      _frameRects.pattern = { x0: m, y0: m, x1: iw - m, y1: Math.round(ih * 0.80) };
+      _frameRects.legend = { x0: m, y0: Math.round(ih * 0.83), x1: iw - m, y1: ih - m };
+      _gridCols = 58;
+    }
+
+    $('#frame-overlay').style.display = 'block';
+    updateFrameBoxes();
+    drawOverlay();
+    bindFrameEvents();
+    fixScroll();
+    console.log('[frame] shown, scale=', _frameScale, 'rects=', JSON.stringify(_frameRects));
+  }
+
+  function exitFrameMode() {
+    _frameMode = false;
+    _frameImage = null;
+    $('#frame-overlay').style.display = 'none';
+    unbindFrameEvents();
+    drawOverlay();
+  }
+
+  function updateFrameBoxes() {
+    updateOneFrameBox('pattern');
+    updateOneFrameBox('legend');
+    var d = currentGridDims();
+    if (d && d.cols >= 1 && d.rows >= 1) { S.targetW = d.cols; S.targetH = d.rows; }
+    drawOverlay();
+  }
+
+  function updateOneFrameBox(box) {
+    var r = _frameRects[box];
+    var el = document.getElementById('frame-' + box);
+    if (!el) return;
+    el.style.left = (r.x0 * _frameScale) + 'px';
+    el.style.top = (r.y0 * _frameScale) + 'px';
+    el.style.width = ((r.x1 - r.x0) * _frameScale) + 'px';
+    el.style.height = ((r.y1 - r.y0) * _frameScale) + 'px';
+  }
+
+  function getFramePos(e) {
+    if (e.touches && e.touches.length) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    return { x: e.clientX, y: e.clientY };
+  }
+
+  function onFrameStart(e) {
+    var target = e.target;
+    var box = target.getAttribute ? target.getAttribute('data-box') : null;
+    var edge = target.getAttribute ? target.getAttribute('data-edge') : null;
+    if (!box && target.closest && target.closest('.frame-box')) {
+      var fb = target.closest('.frame-box');
+      box = fb.id === 'frame-pattern' ? 'pattern' : 'legend';
+      edge = 'move';
+    }
+    if (!box) return;
+    e.preventDefault();
+    var pos = getFramePos(e);
+    var rect = $('#preview-canvas').getBoundingClientRect();
+    _frameDragBox = box;
+    _frameDragEdge = edge;
+    _frameStart = { x: (pos.x - rect.left) / _frameScale, y: (pos.y - rect.top) / _frameScale };
+    _frameOrig = Object.assign({}, _frameRects[box]);
+  }
+
+  function onFrameMove(e) {
+    if (!_frameDragBox || !_frameImage) return;
+    e.preventDefault();
+    var pos = getFramePos(e);
+    var rect = $('#preview-canvas').getBoundingClientRect();
+    var cx = (pos.x - rect.left) / _frameScale;
+    var cy = (pos.y - rect.top) / _frameScale;
+    var dx = cx - _frameStart.x, dy = cy - _frameStart.y;
+    var r = _frameRects[_frameDragBox];
+    var o = _frameOrig;
+    var iw = _frameImage.naturalWidth, ih = _frameImage.naturalHeight;
+
+    switch (_frameDragEdge) {
+      case 'move':
+        var w = o.x1 - o.x0, h = o.y1 - o.y0;
+        r.x0 = clamp(0, iw - w, o.x0 + dx);
+        r.y0 = clamp(0, ih - h, o.y0 + dy);
+        r.x1 = r.x0 + w; r.y1 = r.y0 + h;
+        break;
+      case 'tl': r.x0 = clamp(0, r.x1 - 8, o.x0 + dx); r.y0 = clamp(0, r.y1 - 8, o.y0 + dy); break;
+      case 'tr': r.x1 = clamp(r.x0 + 8, iw, o.x1 + dx); r.y0 = clamp(0, r.y1 - 8, o.y0 + dy); break;
+      case 'bl': r.x0 = clamp(0, r.x1 - 8, o.x0 + dx); r.y1 = clamp(r.y0 + 8, ih, o.y1 + dy); break;
+      case 'br': r.x1 = clamp(r.x0 + 8, iw, o.x1 + dx); r.y1 = clamp(r.y0 + 8, ih, o.y1 + dy); break;
+      case 't': r.y0 = clamp(0, r.y1 - 8, o.y0 + dy); break;
+      case 'b': r.y1 = clamp(r.y0 + 8, ih, o.y1 + dy); break;
+      case 'l': r.x0 = clamp(0, r.x1 - 8, o.x0 + dx); break;
+      case 'r': r.x1 = clamp(r.x0 + 8, iw, o.x1 + dx); break;
+    }
+    updateFrameBoxes();
+  }
+
+  function onFrameEnd() {
+    _frameDragBox = null; _frameDragEdge = null; _frameStart = null; _frameOrig = null;
+  }
+
+  function bindFrameEvents() {
+    $('#frame-overlay').addEventListener('mousedown', onFrameStart);
+    $('#frame-overlay').addEventListener('touchstart', onFrameStart, { passive: false });
+    window.addEventListener('mousemove', onFrameMove);
+    window.addEventListener('touchmove', onFrameMove, { passive: false });
+    window.addEventListener('mouseup', onFrameEnd);
+    window.addEventListener('touchend', onFrameEnd);
+  }
+
+  function unbindFrameEvents() {
+    $('#frame-overlay').removeEventListener('mousedown', onFrameStart);
+    $('#frame-overlay').removeEventListener('touchstart', onFrameStart);
+    window.removeEventListener('mousemove', onFrameMove);
+    window.removeEventListener('touchmove', onFrameMove);
+    window.removeEventListener('mouseup', onFrameEnd);
+    window.removeEventListener('touchend', onFrameEnd);
+  }
+
+  function cutFrames() {
+    if (!_frameImage) return;
+    var pr = _frameRects.pattern;
+    var lr = _frameRects.legend;
+    var pw = Math.round(pr.x1 - pr.x0), ph = Math.round(pr.y1 - pr.y0);
+    var lw = Math.round(lr.x1 - lr.x0), lh = Math.round(lr.y1 - lr.y0);
+
+    // 切出图案内容区
+    var pc = document.createElement('canvas');
+    pc.width = pw; pc.height = ph;
+    pc.getContext('2d').drawImage(_frameImage, pr.x0, pr.y0, pw, ph, 0, 0, pw, ph);
+
+    // 切出用量统计区
+    var lc = document.createElement('canvas');
+    lc.width = lw; lc.height = lh;
+    lc.getContext('2d').drawImage(_frameImage, lr.x0, lr.y0, lw, lh, 0, 0, lw, lh);
+
+    exitFrameMode();
+
+    // 存下两个切图，进入"待解析"状态
+    _framePatternCanvas = pc;
+    _frameLegendCanvas = lc;
+    S.framedReady = true;
+
+    // 预览截取的图案内容
+    var canvas = $('#preview-canvas');
+    canvas.width = pc.width; canvas.height = pc.height;
+    canvas.getContext('2d').drawImage(pc, 0, 0);
+    canvas.classList.remove('empty');
+    var area = $('#canvas-area');
+    var scl = Math.min((area.clientWidth - 48) / pc.width, (area.clientHeight - 48) / pc.height, 1);
+    canvas.style.width = (pc.width * scl) + 'px';
+    canvas.style.height = (pc.height * scl) + 'px';
+    fixScroll();
+    drawOverlay();
+  }
+
+  // ============ 格子拟合 + 采样点 overlay ============
+  function drawOverlay() {
+    var gc = $('#grid-canvas');
+    var cv = $('#preview-canvas');
+    if (!gc || !cv) return;
+    var ctx = gc.getContext('2d');
+    // 让 grid-canvas 与 preview-canvas 完全一致（同 intrinsic + 同 CSS 尺寸），像素 1:1 对齐，避免虚线与橙框错位
+    var rect = cv.getBoundingClientRect();
+    gc.width = cv.width;
+    gc.height = cv.height;
+    gc.style.width = rect.width + 'px';
+    gc.style.height = rect.height + 'px';
+    ctx.clearRect(0, 0, gc.width, gc.height);
+
+    if (_frameMode && _frameImage) {
+      // 第1步：橙框内画正方形格子网（黑色虚线；格子线用浮点间距，精确对齐）
+      var pr = _frameRects.pattern;
+      var d = currentGridDims();
+      if (!d) return;
+      var cellW = (pr.x1 - pr.x0) / d.cols;
+      var cellH = (pr.y1 - pr.y0) / d.rows;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+      ctx.lineWidth = 0.5;
+      ctx.setLineDash([3, 5]);
+      for (var i = 0; i <= d.cols; i++) {
+        var x = pr.x0 + i * cellW;
+        ctx.beginPath(); ctx.moveTo(x, pr.y0); ctx.lineTo(x, pr.y1); ctx.stroke();
+      }
+      for (var j = 0; j <= d.rows; j++) {
+        var y = pr.y0 + j * cellH;
+        ctx.beginPath(); ctx.moveTo(pr.x0, y); ctx.lineTo(pr.x1, y); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    } else if (_framePatternCanvas && _wizardStep === 2) {
+      // 第2步：画每个格子的采样点（仅采样步骤显示，结束后清除）
+      var pc = _framePatternCanvas;
+      var cols = S.targetW || 58;
+      var rows = S.targetH || 58;
+      var cellW = pc.width / cols, cellH = pc.height / rows;
+      ctx.fillStyle = 'rgba(255,40,40,0.9)';
+      for (var yy = 0; yy < rows; yy++) {
+        for (var xx = 0; xx < cols; xx++) {
+          var px = xx * cellW + cellW / 2 + _sampleOffset.dx;
+          var py = yy * cellH + cellH / 2 + _sampleOffset.dy;
+          ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+
+  function currentGridDims() {
+    var pr = _frameRects.pattern;
+    if (!pr || !_gridCols || _gridCols < 2) return null;
+    var fw = pr.x1 - pr.x0, fh = pr.y1 - pr.y0;
+    if (fw < 2 || fh < 2) return null;
+    var cols = _gridCols;
+    var rows = Math.max(1, Math.round(cols * fh / fw));
+    return { cols: cols, rows: rows };
+  }
+
+  function adjustGridCols(delta) {
+    if (!_gridCols || _gridCols < 2) _gridCols = 10;
+    _gridCols = Math.max(2, Math.min(500, _gridCols + delta));
+    var d = currentGridDims();
+    if (d) { S.targetW = d.cols; S.targetH = d.rows; }
+    drawOverlay();
+    updateWizardUI();
+  }
+
+  function adjustSampleOffset(dx, dy) {
+    _sampleOffset.dx += dx;
+    _sampleOffset.dy += dy;
+    drawOverlay();
+  }
+
+  // ============ 导入向导 (分步流程图) ============
+  var _wizardStep = 1;
+
+  function enterWizardMode(img) {
+    _wizardStep = 1;
+    $('#conv-panel').classList.add('hidden');
+    $('#asst-panel').classList.add('hidden');
+    $('#stats-panel').classList.add('hidden');
+    $('#wizard-panel').classList.remove('hidden');
+    enterFrameMode(img);
+    updateWizardUI();
+  }
+
+  function exitWizard() {
+    _wizardStep = 1;
+    $('#wizard-panel').classList.add('hidden');
+    $('#conv-panel').classList.remove('hidden');
+    $('#stats-panel').classList.remove('hidden');
+    if (_bgEditMode) exitBgEditMode();
+    exitFrameMode();
+    showPlaceholder();
+  }
+
+  function updateWizardUI() {
+    for (var i = 1; i <= 4; i++) {
+      var st = document.getElementById('ws-state-' + i);
+      var li = document.querySelector('.wizard-step[data-step="' + i + '"]');
+      if (!st || !li) continue;
+      li.classList.toggle('done', i < _wizardStep);
+      li.classList.toggle('active', i === _wizardStep);
+      st.textContent = i < _wizardStep ? '✓' : (i === _wizardStep ? '●' : '');
+    }
+    var next = $('#wizard-next');
+    var extra = $('#wizard-extra');
+    extra.innerHTML = '';
+    if (_wizardStep === 1) {
+      next.textContent = '确认框选 →';
+      var d = currentGridDims() || { cols: S.targetW, rows: S.targetH };
+      extra.innerHTML =
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+          '<button class="btn btn-sm" id="cell-minus" style="flex:0 0 36px">−</button>' +
+          '<div style="flex:1;text-align:center;font-size:12px;color:var(--txt)">长宽 <b>' + (d.cols || '?') + '×' + (d.rows || '?') + '</b> 格</div>' +
+          '<button class="btn btn-sm" id="cell-plus" style="flex:0 0 36px">+</button>' +
+        '</div>';
+      $('#cell-minus').addEventListener('click', function() { adjustGridCols(-1); });
+      $('#cell-plus').addEventListener('click', function() { adjustGridCols(1); });
+    } else if (_wizardStep === 2) {
+      next.textContent = '确认采样 →';
+      extra.innerHTML =
+        '<div style="font-size:10px;color:var(--dim);text-align:center;margin-bottom:4px">偏移采样点避开字（' + _sampleOffset.dx + ',' + _sampleOffset.dy + '）</div>' +
+        '<div class="shift-grid">' +
+          '<button class="btn btn-sm" id="off-up" style="grid-area:u">↑</button>' +
+          '<button class="btn btn-sm" id="off-left" style="grid-area:l">←</button>' +
+          '<button class="btn btn-sm" id="off-right" style="grid-area:r">→</button>' +
+          '<button class="btn btn-sm" id="off-down" style="grid-area:d">↓</button>' +
+        '</div>' +
+        '<button class="btn btn-sm" id="off-reset" style="width:100%;margin-top:4px">⊙ 复位</button>';
+      $('#off-up').addEventListener('click', function() { adjustSampleOffset(0, -1); });
+      $('#off-down').addEventListener('click', function() { adjustSampleOffset(0, 1); });
+      $('#off-left').addEventListener('click', function() { adjustSampleOffset(-1, 0); });
+      $('#off-right').addEventListener('click', function() { adjustSampleOffset(1, 0); });
+      $('#off-reset').addEventListener('click', function() { _sampleOffset = { dx: 0, dy: 0 }; drawOverlay(); updateWizardUI(); });
+    } else if (_wizardStep === 3) {
+      next.textContent = '确认背景 →';
+    } else if (_wizardStep === 4) {
+      next.textContent = '完成 ✓';
+      extra.innerHTML =
+        '<div class="btn-row" style="margin-bottom:2px">' +
+          '<span style="font-size:11px;color:var(--dim)">最大颜色数</span>' +
+          '<input type="number" id="wz-maxcolors" value="' + (S.maxColors || 0) + '" min="0" max="221" style="flex:1">' +
+          '<span style="font-size:10px;color:var(--dim)">0=不限</span>' +
+        '</div>';
+      $('#wz-maxcolors').addEventListener('input', function() {
+        S.maxColors = parseInt(this.value) || 0;
+        applyMaxColors();
+      });
+    }
+  }
+
+  async function wizardNext() {
+    if (_wizardStep === 1) {
+      if (!_frameImage) { toast('请先框选', 'warn'); return; }
+      cutFrames();
+      _wizardStep = 2;
+      updateWizardUI();
+      drawOverlay(); // 进入采样步骤时立即显示采样点
+    } else if (_wizardStep === 2) {
+      await processFramed();
+      _wizardStep = 3;
+      updateWizardUI();
+      drawOverlay(); // 清除采样点
+      enterBgEditMode();
+    } else if (_wizardStep === 3) {
+      exitBgEditMode();
+      _wizardStep = 4;
+      updateWizardUI();
+    } else if (_wizardStep === 4) {
+      // 完成，退出向导回到普通界面（保存仓库/切辅助用原来的按钮）
+      _wizardStep = 1;
+      $('#wizard-panel').classList.add('hidden');
+      $('#conv-panel').classList.remove('hidden');
+      $('#stats-panel').classList.remove('hidden');
+      drawOverlay(); // 确保采样点/格子线清除
+      toast('导入完成', 'success');
+    }
+  }
+
+  $('#wizard-exit').addEventListener('click', exitWizard);
+  $('#wizard-next').addEventListener('click', wizardNext);
+
+  // 提取格子实际 RGB：中心点 + 偏移采样（小块众数，避开格内文字/网格线）
+  // 采样前把 RGB 量化到 4 一档，消除 JPEG 噪声导致的"同色被识成多种"问题
+  function readCellRGB(data, w, h, cx, cy, cellW, cellH, ox, oy) {
+    var px = Math.round(cx + (ox || 0));
+    var py = Math.round(cy + (oy || 0));
+    var r = Math.max(1, Math.min(3, Math.floor(Math.min(cellW, cellH) * 0.22)));
+    var hist = {};
+    var maxC = 0, domKey = null, total = 0;
+    for (var y = Math.max(0, py - r); y <= Math.min(h - 1, py + r); y++) {
+      var rowBase = y * w;
+      for (var x = Math.max(0, px - r); x <= Math.min(w - 1, px + r); x++) {
+        var idx = (rowBase + x) * 4;
+        if (data[idx + 3] < 128) continue;
+        var key = Math.round(data[idx] / 4) * 4 + ',' + Math.round(data[idx + 1] / 4) * 4 + ',' + Math.round(data[idx + 2] / 4) * 4;
+        hist[key] = (hist[key] || 0) + 1;
+        if (hist[key] > maxC) { maxC = hist[key]; domKey = key; }
+        total++;
+      }
+    }
+    if (total < 1 || !domKey) return null;
+    var parts = domKey.split(',');
+    return [parseInt(parts[0], 10), parseInt(parts[1], 10), parseInt(parts[2], 10)];
+  }
+
+  // 采样所有格子的实际 RGB（中心点 + 全局偏移）
+  function sampleCellRGBs(canvas, cols, rows, offset) {
+    var w = canvas.width, h = canvas.height;
+    var cellW = w / cols, cellH = h / rows;
+    var ctx = canvas.getContext('2d');
+    var data = ctx.getImageData(0, 0, w, h).data;
+    var ox = offset ? (offset.dx || 0) : 0;
+    var oy = offset ? (offset.dy || 0) : 0;
+    var grid = [];
+    for (var y = 0; y < rows; y++) {
+      var row = [];
+      for (var x = 0; x < cols; x++) {
+        var cx = Math.round(x * cellW + cellW / 2);
+        var cy = Math.round(y * cellH + cellH / 2);
+        row.push(readCellRGB(data, w, h, cx, cy, cellW, cellH, ox, oy));
+      }
+      grid.push(row);
+    }
+    return { grid: grid, cellW: cellW, cellH: cellH };
+  }
+
+  // 把采样 RGB 网格转成色号矩阵（直接 Lab 最近色匹配）
+  function applyColorGrid(rgbGrid, labPalette, cols, rows) {
+    var codes = Array.from({ length: rows }, function() { return new Array(cols).fill(null); });
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        var rgb = rgbGrid[y][x];
+        if (!rgb) continue;
+        codes[y][x] = matchLab(rgb, labPalette).id;
+      }
+    }
+    return buildMatrix(codes, rows, cols, S.converter);
+  }
+
+  // 把图案区 canvas 按 cols×rows 网格化（直接 Lab + 中心点偏移采样）
+  function gridifyCanvas(canvas, cols, rows, labPalette) {
+    var s = sampleCellRGBs(canvas, cols, rows, _sampleOffset);
+    return applyColorGrid(s.grid, labPalette, cols, rows);
+  }
+
+  // 背景色判定：Lab 明度足够高（浅色白底）且接近中性灰（低饱和度）的格子视为背景
+  var _labMap = null;
+  function getCellLab(cell) {
+    if (!cell) return null;
+    if (!_labMap) {
+      _labMap = {};
+      var lp = S.converter ? S.converter.labPalette : [];
+      for (var i = 0; i < lp.length; i++) _labMap[lp[i].id] = lp[i].lab;
+    }
+    return _labMap[cell.id] || null;
+  }
+  function isBgColor(cell) {
+    var lab = getCellLab(cell);
+    if (!lab) return false;
+    return lab.L >= 80 && Math.abs(lab.a) < 18 && Math.abs(lab.b) < 18;
+  }
+
+  // 背景自动拟合：从矩阵四边裁掉"整行/整列都是背景色"的边缘
+  function trimBackground(matrix) {
+    var h = matrix.length, w = h > 0 ? matrix[0].length : 0;
+    if (h < 3 || w < 3) return matrix;
+
+    function rowAllBg(y) {
+      for (var x = 0; x < w; x++) if (!isBgColor(matrix[y][x])) return false;
+      return true;
+    }
+    function colAllBg(x) {
+      for (var y = 0; y < h; y++) if (!isBgColor(matrix[y][x])) return false;
+      return true;
+    }
+
+    var top = 0, bottom = h - 1, left = 0, right = w - 1;
+    while (top < h - 1 && rowAllBg(top)) top++;
+    while (bottom > top && rowAllBg(bottom)) bottom--;
+    while (left < w - 1 && colAllBg(left)) left++;
+    while (right > left && colAllBg(right)) right--;
+
+    if (top === 0 && bottom === h - 1 && left === 0 && right === w - 1) return matrix;
+
+    var trimmed = [];
+    for (var y = top; y <= bottom; y++) {
+      var row = [];
+      for (var x = left; x <= right; x++) row.push(matrix[y][x]);
+      trimmed.push(row);
+    }
+    return trimmed;
+  }
+
+  // 洪水填充背景吸附：从四边 BFS，把连通的"浅色中性灰"背景格子标记为 null
+  function floodFillBackground(matrix) {
+    var h = matrix.length, w = h > 0 ? matrix[0].length : 0;
+    if (h < 3 || w < 3) return matrix;
+
+    var DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    var bg = Array.from({ length: h }, function() { return new Array(w).fill(false); });
+    var queue = [];
+    function seed(x, y) {
+      if (isBgColor(matrix[y][x]) && !bg[y][x]) { bg[y][x] = true; queue.push([x, y]); }
+    }
+    for (var x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
+    for (var y = 0; y < h; y++) { seed(0, y); seed(w - 1, y); }
+
+    while (queue.length) {
+      var p = queue.pop();
+      for (var d = 0; d < 4; d++) {
+        var nx = p[0] + DIR4[d][0], ny = p[1] + DIR4[d][1];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (bg[ny][nx]) continue;
+        if (isBgColor(matrix[ny][nx])) {
+          bg[ny][nx] = true;
+          queue.push([nx, ny]);
+        }
+      }
+    }
+
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (bg[y][x]) matrix[y][x] = null;
+      }
+    }
+    return matrix;
+  }
+
+  // OCR 用量统计区 canvas → 解析图例
+  function ocrLegendCanvas(canvas, callback) {
+    canvas.toBlob(function(blob) {
+      if (!blob) { callback([]); return; }
+      _ensurePaddleOcr().then(function(ocr) {
+        return ocr.predict(blob);
+      }).then(function(results) {
+        var items = (results && results[0] && results[0].items) || [];
+        var text = items.map(function(it) { return it.text; }).join('\n');
+        callback(parseOcrLegendText(text, S.converter.labPalette));
+      }).catch(function(e) {
+        console.error(e);
+        callback([]);
+      });
+    }, 'image/png');
+  }
+
+  async function _ensurePaddleOcr() {
+    if (_paddleOcr) return _paddleOcr;
+    const mod = await import('https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm');
+    const PaddleOCR = mod.PaddleOCR;
+    _paddleOcr = await PaddleOCR.create({ lang: 'ch', ocrVersion: 'PP-OCRv5' });
+    return _paddleOcr;
+  }
+
+  // 深拷贝矩阵（背景编辑恢复用）
+  function copyMatrix(matrix) {
+    return matrix.map(function(row) {
+      return row.map(function(c) { return c ? { id: c.id, name: c.name, hex: c.hex, rgb: c.rgb, category: c.category } : null; });
+    });
+  }
+
+  // 把框选出的图案区 canvas 按 cols×rows 网格化（编号圈由用户框选/背景清除处理）
+  function gridifyPattern(pc, cols, rows, lp) {
+    return gridifyCanvas(pc, cols, rows, lp);
+  }
+
+  // 框选完成后：网格化图案区 + OCR 用量区
+  async function processFramed() {
+    var pc = _framePatternCanvas, lc = _frameLegendCanvas;
+    var lp = S.converter.labPalette;
+
+    showLoading('解析图案内容...');
+    var cols = S.targetW || 58;
+    var rows = S.targetH || 58;
+
+    var matrix = gridifyPattern(pc, cols, rows, lp);
+    _bgOrigMatrix = copyMatrix(matrix);
+    matrix = trimBackground(matrix);
+    matrix = floodFillBackground(matrix);
+    S.matrix = matrix;
+    _baseMatrix = copyMatrix(matrix); // 未限色原始矩阵（最大颜色数用）
+    S.targetW = cols; S.targetH = rows;
+    $('#width-input').value = cols;
+    $('#height-input').value = rows;
+    S.stats = S.converter.getStats(matrix);
+    S.image = null; S.patternImage = null;
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    $('#drop-zone').classList.add('has-image');
+
+    // OCR 用量统计区
+    S.legendOCR = [];
+    if (lc && lc.width > 0 && lc.height > 0) {
+      showLoading('OCR 识别用量统计...');
+      await new Promise(function(resolve) {
+        ocrLegendCanvas(lc, function(legend) {
+          S.legendOCR = legend;
+          resolve();
+        });
+      });
+    }
+    hideLoading();
+    showQCPanel();
+    updateImportStatusFromFrame();
+  }
+
+  // 解析后改长宽，实时重新网格化
+  function reGridifyFramed() {
+    if (!_framePatternCanvas) return;
+    var cols = S.targetW || 58;
+    var rows = S.targetH || 58;
+    var matrix = gridifyPattern(_framePatternCanvas, cols, rows, S.converter.labPalette);
+    _bgOrigMatrix = copyMatrix(matrix);
+    matrix = trimBackground(matrix);
+    matrix = floodFillBackground(matrix);
+    S.matrix = matrix;
+    S.stats = S.converter.getStats(matrix);
+    updateRendererOpts(); renderConvert(); updateStatsPanel();
+    updateImportStatusFromFrame();
+  }
+
+  function updateImportStatusFromFrame() {
+    var el = $('#import-status');
+    if (!el) return;
+    var html = '尺寸 ' + S.targetW + '×' + S.targetH;
+    if (S.legendOCR && S.legendOCR.length) {
+      html += '<br>图例 ' + S.legendOCR.length + ' 色(OCR)';
+    }
+    el.innerHTML = html;
   }
 
   // ============ Panel Toggle (mobile/tablet) ============

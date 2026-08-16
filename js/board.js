@@ -7,6 +7,7 @@ function createBoardConfig() {
   return {
     width: 78, height: 78,
     guideSpacing: 5, guideOffset: 4,
+    boardSize: 29, // 单板尺寸 (用于跨板边界线)
   };
 }
 

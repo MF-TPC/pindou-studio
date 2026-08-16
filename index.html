@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>格物 — Pindou Studio</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#e8724a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="格物">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23e8724a'/><circle cx='12' cy='12' r='3' fill='%23fff' opacity='.5'/></svg>">
 </head>
 <body>
@@ -18,6 +23,7 @@
   </div>
   <button class="panel-toggle" id="toggle-right">◫</button>
   <button class="theme-btn" id="theme-toggle">🌙</button>
+  <button class="theme-btn" id="help-btn" title="说明书">📖</button>
 </header>
 
 <div class="app-body">
@@ -27,7 +33,7 @@
 
     <div class="p-group">
       <div class="p-label">📥 导入</div>
-      <div class="drop-zone" id="drop-zone">
+      <div class="drop-zone" id="drop-zone" style="margin-bottom:10px">
         <span class="dz-icon">+</span> 拖拽图片 / 点击上传 / Ctrl+V
       </div>
       <input type="file" id="file-input" accept="image/*" hidden>
@@ -35,20 +41,11 @@
         <button class="btn btn-sm" id="upload-btn">📁 选择文件</button>
         <button class="btn btn-sm btn-accent" id="import-pattern-btn">🔍 导入图纸</button>
       </div>
-      <div class="toggle-row" style="margin-top:3px">
-        <span class="tgl-text">🧠 OCR增强</span>
-        <label class="toggle-switch"><input type="checkbox" id="ocr-toggle"><span class="slider"></span></label>
-      </div>
     </div>
 
     <div class="p-group">
       <div class="p-label">🎨 转换设置</div>
       <select id="palette-select"><option value="mard-221">MARD 221色</option></select>
-      <select id="match-algo" style="margin-top:3px">
-        <option value="median-cut">Median Cut 简约</option>
-        <option value="lab-cluster">Lab 轻度聚类</option>
-        <option value="direct">Lab 直接匹配</option>
-      </select>
       <div class="btn-row" style="margin-top:4px">
         <input type="number" id="width-input" value="58" min="1" max="500">
         <span class="dim">×</span>
@@ -79,6 +76,7 @@
         <button class="btn btn-sm" id="crop-btn">✂️ 裁剪</button>
         <button class="btn btn-sm" id="edit-undo">↩ 撤销</button>
       </div>
+      <button class="btn btn-sm btn-block" id="bg-edit-btn" style="margin-top:3px">🧹 背景编辑</button>
       <button class="btn btn-sm btn-block btn-accent" id="save-to-vault" style="margin-top:3px">💾 保存到仓库</button>
       <div id="vault-save-dlg" style="display:none;margin-top:3px">
         <input type="text" id="vault-name-input" placeholder="图纸名称" style="width:100%;margin-bottom:2px">
@@ -141,8 +139,7 @@
 
     <div class="p-group">
       <div class="p-label">📥 导入图纸</div>
-      <button class="btn btn-sm" id="asst-import-img" style="width:100%">🖼️ 从图片导入</button>
-      <button class="btn btn-sm" id="asst-from-conv" style="width:100%;margin-top:3px">🔄 从转换结果导入</button>
+      <button class="btn btn-sm" id="asst-from-conv" style="width:100%">🔄 从转换结果导入</button>
     </div>
 
     <div class="p-group">
@@ -160,6 +157,10 @@
       <div class="batch-cur">
         <div class="batch-color-name" id="batch-color">—</div>
         <div style="font-size:11px;color:var(--dim)"><span id="batch-count">0</span>颗 · <span id="batch-progress">—</span></div>
+      </div>
+      <div class="progress-bar-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-bar-fill" id="progress-fill"></div>
+        <div class="progress-bar-text" id="progress-text">0%</div>
       </div>
       <button class="btn btn-primary" id="btn-advance" style="width:100%;margin-top:6px">✅ 下一批</button>
       <div class="btn-row" style="margin-top:3px">
@@ -179,10 +180,45 @@
     </div>
   </aside>
 
+  <!-- ==================== 导入向导 (分步流程图) ==================== -->
+  <aside class="panel-left hidden" id="wizard-panel">
+    <div class="wizard-head">
+      <button class="btn btn-sm" id="wizard-exit">✕ 退出</button>
+      <span class="wizard-title">📥 导入图纸</span>
+    </div>
+    <ol class="wizard-steps">
+      <li class="wizard-step" data-step="1">
+        <span class="ws-num">1</span>
+        <div class="ws-body"><div class="ws-label">框选图案与图例</div><div class="ws-hint">橙=图案 · 蓝=用量统计，把数字框外围全框好</div></div>
+        <span class="ws-state" id="ws-state-1"></span>
+      </li>
+      <li class="wizard-step" data-step="2">
+        <span class="ws-num">2</span>
+        <div class="ws-body"><div class="ws-label">确定长宽</div><div class="ws-hint">自动读出，可手动改</div></div>
+        <span class="ws-state" id="ws-state-2"></span>
+      </li>
+      <li class="wizard-step" data-step="3">
+        <span class="ws-num">3</span>
+        <div class="ws-body"><div class="ws-label">背景清除</div><div class="ws-hint">点格子切换背景/恢复</div></div>
+        <span class="ws-state" id="ws-state-3"></span>
+      </li>
+      <li class="wizard-step" data-step="4">
+        <span class="ws-num">4</span>
+        <div class="ws-body"><div class="ws-label">确定图纸</div><div class="ws-hint">最大颜色数 + 完成</div></div>
+        <span class="ws-state" id="ws-state-4"></span>
+      </li>
+    </ol>
+    <div class="wizard-actions">
+      <div id="wizard-extra"></div>
+      <button class="btn btn-primary btn-block" id="wizard-next">下一步</button>
+    </div>
+  </aside>
+
   <!-- ==================== Canvas ==================== -->
   <main class="canvas-area" id="canvas-area">
     <div id="canvas-wrap">
       <canvas id="preview-canvas" width="400" height="280"></canvas>
+      <canvas id="grid-canvas" style="position:absolute;inset:0;pointer-events:none"></canvas>
       <div id="crop-overlay" style="display:none;position:absolute;inset:0">
         <div class="crop-mask" id="crop-mask-t"></div>
         <div class="crop-mask" id="crop-mask-b"></div>
@@ -193,6 +229,22 @@
           <div class="crop-h" data-edge="bl"></div><div class="crop-h" data-edge="br"></div>
           <div class="crop-h" data-edge="t"></div><div class="crop-h" data-edge="b"></div>
           <div class="crop-h" data-edge="l"></div><div class="crop-h" data-edge="r"></div>
+        </div>
+      </div>
+      <div id="frame-overlay" style="display:none;position:absolute;inset:0">
+        <div class="frame-box frame-pattern" id="frame-pattern">
+          <span class="frame-label" id="frame-pattern-label">图案内容</span>
+          <div class="frame-h" data-box="pattern" data-edge="tl"></div><div class="frame-h" data-box="pattern" data-edge="tr"></div>
+          <div class="frame-h" data-box="pattern" data-edge="bl"></div><div class="frame-h" data-box="pattern" data-edge="br"></div>
+          <div class="frame-h" data-box="pattern" data-edge="t"></div><div class="frame-h" data-box="pattern" data-edge="b"></div>
+          <div class="frame-h" data-box="pattern" data-edge="l"></div><div class="frame-h" data-box="pattern" data-edge="r"></div>
+        </div>
+        <div class="frame-box frame-legend" id="frame-legend">
+          <span class="frame-label" id="frame-legend-label">用量统计</span>
+          <div class="frame-h" data-box="legend" data-edge="tl"></div><div class="frame-h" data-box="legend" data-edge="tr"></div>
+          <div class="frame-h" data-box="legend" data-edge="bl"></div><div class="frame-h" data-box="legend" data-edge="br"></div>
+          <div class="frame-h" data-box="legend" data-edge="t"></div><div class="frame-h" data-box="legend" data-edge="b"></div>
+          <div class="frame-h" data-box="legend" data-edge="l"></div><div class="frame-h" data-box="legend" data-edge="r"></div>
         </div>
       </div>
     </div>
@@ -212,6 +264,7 @@
         <div class="stat-item"><div class="stat-v" id="total-colors">0</div><div class="stat-l">颜色</div></div>
         <div class="stat-item"><div class="stat-v" id="total-boards">0</div><div class="stat-l">板子</div></div>
       </div>
+      <div id="import-status" style="font-size:11px;color:var(--dim);margin-top:5px;line-height:1.5"></div>
     </div>
 
     <div class="p-group" id="qc-section" style="display:none">
@@ -221,7 +274,13 @@
     </div>
 
     <div class="p-group">
-      <div class="p-label">🎨 图例</div>
+      <div class="p-label">🎨 图例
+        <select id="legend-sort" style="float:right;font-size:10px;width:auto;padding:1px 2px;border:1px solid var(--bor);border-radius:3px;background:var(--surf);color:var(--txt)">
+          <option value="count-desc" selected>数量↓</option>
+          <option value="count-asc">数量↑</option>
+          <option value="id">色号</option>
+        </select>
+      </div>
       <ul class="legend-list" id="legend-list"><li style="color:var(--dim);font-size:11px;padding:4px">请先导入</li></ul>
     </div>
   </aside>
@@ -253,6 +312,42 @@
   </div>
 </div>
 
+<!-- 说明书 -->
+<div class="help-overlay hidden" id="help-overlay">
+  <div class="help-box">
+    <div class="help-head">
+      <span class="help-title">📖 格物 · 使用说明书</span>
+      <button class="btn btn-sm" id="help-close">✕ 关闭</button>
+    </div>
+    <div class="help-body">
+      <h3>🎨 转换模式（照片 → 图纸）</h3>
+      <p>点左上「🎨 转换」，把照片拖进虚线框 / 点「📁 选择文件」/ Ctrl+V 粘贴。设好<b>长宽</b>（格数），程序自动把照片转成拼豆图案。右下「最大颜色数」可在导入时再调。</p>
+
+      <h3>🔍 导入图纸模式（从成品图纸读色号）</h3>
+      <p>点「🔍 导入图纸」进入 4 步向导：</p>
+      <ol>
+        <li><b>框选 + 调格子</b>：橙框框住「图案 + 编号圈」，蓝框框住下方「用量统计」。用 −/+ 调<b>长宽（格数）</b>，让黑色虚线贴到图纸的格子线上；拖框边/角精修位置。</li>
+        <li><b>采样点偏移</b>：每个格子中心有红点（采样点）。用 ↑↓←→ 把红点从格子中间印的<b>色号字</b>上移开，落到纯色区域，点「确认采样」。</li>
+        <li><b>背景清除</b>：点格子可切换「背景 / 恢复」，把白底、编号圈都抹掉，点「确认背景」。</li>
+        <li><b>确定图纸</b>：可设「最大颜色数」（0=不限），相近的颜色会自动合并。点「完成」退出。</li>
+      </ol>
+
+      <h3>📍 辅助定位模式（摆珠子）</h3>
+      <p>切到「📍 辅助」，点「🔄 从转换结果导入」。设<b>板子宽高</b>、<b>红线间距</b>（每几格画一条红线）和<b>起始偏移</b>。屏幕按颜色分批提示，摆完一批点「✅ 下一批」；「🎯 专注」放大只看当前颜色，「↩ 撤销」回退。</p>
+
+      <h3>✂️ 常用工具</h3>
+      <ul>
+        <li><b>裁剪</b>：切掉边缘；<b>水平/垂直翻转</b>、<b>撤销</b>。</li>
+        <li><b>🧹 背景编辑</b>：导入后点格子批量切换背景。</li>
+        <li><b>💾 保存到仓库</b>：把图纸存到本地（下次可从仓库恢复）。</li>
+        <li><b>导出</b>：下载 PNG / 打印 / JSON 备份。</li>
+        <li><b>🌙</b> 右上角切换明暗主题。</li>
+      </ul>
+      <p class="help-note">提示：导入时建议用<b>高清原图</b>，格子线更容易对上；改完记得「确认」才生效。</p>
+    </div>
+  </div>
+</div>
+
 <script src="js/colormatch.js"></script>
 <script src="js/palettes.js"></script>
 <script src="js/dither.js"></script>
@@ -264,5 +359,10 @@
 <script src="js/renderer.js"></script>
 <script src="js/exporter.js"></script>
 <script src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function() {});
+  }
+</script>
 </body>
 </html>

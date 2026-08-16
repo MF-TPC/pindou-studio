@@ -1,0 +1,24 @@
+{
+  "name": "格物 — Pindou Studio",
+  "short_name": "格物",
+  "description": "拼豆图纸转换与定位辅助工具",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f5f3f0",
+  "theme_color": "#e8724a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23e8724a'/><text x='96' y='130' text-anchor='middle' font-size='100' font-family='sans-serif' fill='white'>格</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%23e8724a'/><text x='256' y='340' text-anchor='middle' font-size='260' font-family='sans-serif' fill='white'>格</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
