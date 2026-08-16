@@ -2036,7 +2036,8 @@
         var text = items.map(function(it) { return it.text; }).join('\n');
         callback(parseOcrLegendText(text, S.converter.labPalette));
       }).catch(function(e) {
-        console.error(e);
+        console.error('OCR 失败:', e);
+        toast('图例 OCR 识别失败', 'warn');
         callback([]);
       });
     }, 'image/png');
@@ -2072,8 +2073,8 @@
     var rows = S.targetH || 58;
 
     var matrix = gridifyPattern(pc, cols, rows, lp);
-    _bgOrigMatrix = copyMatrix(matrix);
     matrix = trimBackground(matrix);
+    _bgOrigMatrix = copyMatrix(matrix); // 背景编辑恢复用：裁剪后、洪水填充前的原始矩阵（坐标与 S.matrix 对齐）
     matrix = floodFillBackground(matrix);
     S.matrix = matrix;
     _baseMatrix = copyMatrix(matrix); // 未限色原始矩阵（最大颜色数用）
@@ -2092,6 +2093,7 @@
       await new Promise(function(resolve) {
         ocrLegendCanvas(lc, function(legend) {
           S.legendOCR = legend;
+          if (!legend || !legend.length) toast('未识别到图例文字（OCR）', 'warn');
           resolve();
         });
       });
@@ -2107,8 +2109,8 @@
     var cols = S.targetW || 58;
     var rows = S.targetH || 58;
     var matrix = gridifyPattern(_framePatternCanvas, cols, rows, S.converter.labPalette);
-    _bgOrigMatrix = copyMatrix(matrix);
     matrix = trimBackground(matrix);
+    _bgOrigMatrix = copyMatrix(matrix);
     matrix = floodFillBackground(matrix);
     S.matrix = matrix;
     S.stats = S.converter.getStats(matrix);

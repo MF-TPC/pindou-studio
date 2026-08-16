@@ -1,9 +1,10 @@
 /**
- * 格物 — Service Worker (V1)
- * 离线缓存策略: 核心资源预缓存，其他运行时缓存
+ * 格物 — Service Worker (V2)
+ * 离线缓存策略: 核心资源预缓存，其他运行时缓存。
+ * 只缓存同源资源；跨域资源(CDN/OCR模型等)直接放行，避免干扰 OCR 模型下载。
  */
 
-var CACHE = 'pindou-v1';
+var CACHE = 'pindou-v2';
 var ASSETS = [
   './',
   'index.html',
@@ -45,13 +46,13 @@ self.addEventListener('activate', function(e) {
   self.clients.claim();
 });
 
-// Fetch: 缓存优先，网络回退
+// Fetch: 同源缓存优先、网络回退；跨域直接放行
 self.addEventListener('fetch', function(e) {
   if (e.request.method !== 'GET') return;
 
-  // 跳过 CDN 资源
-  var url = e.request.url;
-  if (url.includes('cdn.jsdelivr.net') || url.includes('unpkg.com')) return;
+  var url = new URL(e.request.url);
+  // 跨域(CDN / OCR 模型 / 字体等)不拦截，交给浏览器原生处理
+  if (url.origin !== self.location.origin) return;
 
   e.respondWith(
     caches.match(e.request).then(function(cached) {
