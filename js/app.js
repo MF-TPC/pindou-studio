@@ -184,7 +184,7 @@
     // Zoom
     $('#zoom-in').addEventListener('click', () => changeZoom(0.2));
     $('#zoom-out').addEventListener('click', () => changeZoom(-0.2));
-    $('#zoom-reset').addEventListener('click', () => { S.zoom = 1; $('#zoom-label').textContent = '100%'; rerender(); });
+    $('#zoom-reset').addEventListener('click', () => { S.zoom = 1; $('#zoom-label').textContent = '100%'; rerender(); centerScroll(); });
     $('#btn-fit').addEventListener('click', fitToScreen);
     $('#canvas-wrap').addEventListener('wheel', e => {
       if (e.ctrlKey || e.metaKey) { e.preventDefault(); changeZoom(e.deltaY < 0 ? 0.15 : -0.15); }
@@ -429,25 +429,25 @@
   }
 
   function fixScroll() {
+    // 只调整 margin（小画布居中），不重置滚动位置——放大编辑时保持不动，不再自动归中
     var area = $('#canvas-area');
     var wrap = $('#canvas-wrap');
     var c = $('#preview-canvas');
     var aw = area.clientWidth, ah = area.clientHeight;
     var cw = c.width, ch = c.height;
+    if (cw <= aw) wrap.style.marginLeft = Math.floor((aw - cw) / 2) + 'px';
+    else wrap.style.marginLeft = '0';
+    if (ch <= ah) wrap.style.marginTop = Math.floor((ah - ch) / 2) + 'px';
+    else wrap.style.marginTop = '0';
+  }
 
-    // 居中: canvas 比视口小时用 margin, 大时用 scroll
-    if (cw <= aw) {
-      wrap.style.marginLeft = Math.floor((aw - cw) / 2) + 'px';
-    } else {
-      wrap.style.marginLeft = '0';
-      area.scrollLeft = Math.max(0, Math.floor((cw - aw) / 2));
-    }
-    if (ch <= ah) {
-      wrap.style.marginTop = Math.floor((ah - ch) / 2) + 'px';
-    } else {
-      wrap.style.marginTop = '0';
-      area.scrollTop = Math.max(0, Math.floor((ch - ah) / 2));
-    }
+  function centerScroll() {
+    fixScroll();
+    var area = $('#canvas-area');
+    var c = $('#preview-canvas');
+    var aw = area.clientWidth, ah = area.clientHeight;
+    if (c.width > aw) area.scrollLeft = Math.max(0, Math.floor((c.width - aw) / 2));
+    if (c.height > ah) area.scrollTop = Math.max(0, Math.floor((c.height - ah) / 2));
   }
 
   function changeZoom(d) {
@@ -470,6 +470,7 @@
     S.zoom = clamp(0.15, 5, Math.min(mw / cw, mh / ch));
     $('#zoom-label').textContent = Math.round(S.zoom * 100) + '%';
     rerender();
+    centerScroll();
   }
 
   // ============ Stats ============
@@ -775,7 +776,7 @@
     ctx.fillText('拖拽图片或点击上传开始', c.width / 2, c.height / 2 - 14);
     ctx.fillText('支持 Ctrl+V 粘贴', c.width / 2, c.height / 2 + 14);
     c.classList.add('empty');
-    fixScroll();
+    centerScroll();
   }
 
   function downloadBlob(content, filename, type) {
@@ -1557,7 +1558,7 @@
     updateFrameBoxes();
     drawOverlay();
     bindFrameEvents();
-    fixScroll();
+    centerScroll();
     console.log('[frame] shown, scale=', _frameScale, 'rects=', JSON.stringify(_frameRects));
   }
 
@@ -1697,7 +1698,7 @@
     var scl = Math.min((area.clientWidth - 48) / pc.width, (area.clientHeight - 48) / pc.height, 1);
     canvas.style.width = (pc.width * scl) + 'px';
     canvas.style.height = (pc.height * scl) + 'px';
-    fixScroll();
+    centerScroll();
     drawOverlay();
   }
 
@@ -2093,6 +2094,7 @@
     S.stats = S.converter.getStats(matrix);
     S.image = null; S.patternImage = null;
     updateRendererOpts(); renderConvert(); updateStatsPanel();
+    centerScroll();
     $('#drop-zone').classList.add('has-image');
 
     // OCR 用量统计区
