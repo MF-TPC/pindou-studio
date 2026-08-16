@@ -1221,12 +1221,14 @@
 
   // ============ 扫雷插旗式背景编辑 ============
   var _bgEditMode = false;
-  var _bgOrigMatrix = null;
+  var _bgOrigMatrix = null; // 洪水填充前的全色矩阵（flood 空格子的恢复源）
+  var _bgSaved = {}; // 用户手动置背景的格子 "x,y" -> 颜色对象（手动恢复源）
   var _baseMatrix = null; // 未限色的原始矩阵（最大颜色数编辑用）
 
   function enterBgEditMode() {
     if (!S.matrix) { toast('请先导入图纸', 'warn'); return; }
     _bgEditMode = true;
+    _bgSaved = {};
     // 用洪水填充前保存的原始矩阵恢复（若没有则从当前矩阵拷贝）
     if (!_bgOrigMatrix) {
       _bgOrigMatrix = S.matrix.map(function(row) {
@@ -1262,13 +1264,19 @@
   }
 
   function toggleBgCell(x, y) {
-    if (!S.matrix || !_bgOrigMatrix) return;
+    if (!S.matrix) return;
+    var key = x + ',' + y;
     if (S.matrix[y][x]) {
+      _bgSaved[key] = S.matrix[y][x]; // 记住当前颜色（可能已改过色），恢复时用它
       S.matrix[y][x] = null; // 变背景
     } else {
-      S.matrix[y][x] = _bgOrigMatrix[y][x]; // 恢复原色
+      var saved = _bgSaved[key];
+      S.matrix[y][x] = saved || (_bgOrigMatrix && _bgOrigMatrix[y] ? _bgOrigMatrix[y][x] : null);
+      delete _bgSaved[key];
     }
+    S.stats = S.converter.getStats(S.matrix);
     renderConvert();
+    updateStatsPanel(); // 实时刷新右侧统计/图例/数量校验
   }
 
   function bgEditCellAtEvent(e) {
@@ -1859,6 +1867,7 @@
       _wizardStep = 3;
       updateWizardUI();
       drawOverlay(); // 清除采样点
+      $('#stats-panel').classList.remove('hidden'); // 背景清除时显示右侧统计，实时更新
       enterBgEditMode();
     } else if (_wizardStep === 3) {
       exitBgEditMode();
