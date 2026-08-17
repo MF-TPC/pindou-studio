@@ -33,14 +33,14 @@
 
     <div class="p-group">
       <div class="p-label">📥 导入</div>
-      <div class="drop-zone" id="drop-zone" style="margin-bottom:10px">
-        <span class="dz-icon">+</span> 拖拽图片 / 点击上传 / Ctrl+V
+      <div class="mode-tabs" style="margin-bottom:6px">
+        <button class="mode-tab active" id="mode-convert-img">🖼️ 转换图片</button>
+        <button class="mode-tab" id="mode-import-img">🔍 导入图纸</button>
+      </div>
+      <div class="drop-zone" id="drop-zone" style="margin-bottom:8px">
+        <span class="dz-icon">+</span> <span id="drop-zone-hint">拖拽图片 / 点击上传 / Ctrl+V</span>
       </div>
       <input type="file" id="file-input" accept="image/*" hidden>
-      <div class="btn-row">
-        <button class="btn btn-sm" id="upload-btn">📁 选择文件</button>
-        <button class="btn btn-sm btn-accent" id="import-pattern-btn">🔍 导入图纸</button>
-      </div>
     </div>
 
     <div class="p-group">
@@ -73,8 +73,7 @@
         <button class="btn btn-sm" id="flip-v">↕ 垂直翻转</button>
       </div>
       <div class="btn-row" style="margin-top:3px">
-        <button class="btn btn-sm" id="crop-btn">✂️ 裁剪</button>
-        <button class="btn btn-sm" id="edit-undo">↩ 撤销</button>
+        <button class="btn btn-sm" id="edit-undo" style="flex:1">↩ 撤销</button>
       </div>
       <button class="btn btn-sm btn-block" id="bg-edit-btn" style="margin-top:3px">🧹 背景编辑</button>
       <button class="btn btn-sm btn-block btn-accent" id="save-to-vault" style="margin-top:3px">💾 保存到仓库</button>
@@ -88,21 +87,6 @@
       </div>
     </div>
 
-    <!-- 裁剪参数 (隐藏) -->
-    <div class="p-group" id="crop-section" style="display:none">
-      <div class="p-label">✂️ 裁剪参数</div>
-      <div class="btn-row">
-        <input type="number" id="crop-left" value="0" style="width:50px"><span style="font-size:10px">左</span>
-        <input type="number" id="crop-right" value="0" style="width:50px"><span style="font-size:10px">右</span>
-      </div>
-      <div class="btn-row" style="margin-top:2px">
-        <input type="number" id="crop-top" value="0" style="width:50px"><span style="font-size:10px">上</span>
-        <input type="number" id="crop-bottom" value="0" style="width:50px"><span style="font-size:10px">下</span>
-      </div>
-      <button class="btn btn-sm btn-accent" id="crop-apply" style="width:100%;margin-top:3px">确认裁剪</button>
-      <button class="btn btn-sm" id="crop-cancel" style="width:100%;margin-top:2px">取消</button>
-    </div>
-
     <div class="p-group">
       <div class="p-label">💾 导出</div>
       <div class="btn-row">
@@ -110,9 +94,9 @@
         <button class="btn btn-sm" id="export-print" style="flex:1">打印</button>
       </div>
       <div class="btn-row" style="margin-top:2px">
-        <button class="btn btn-sm" id="export-json" style="flex:1">JSON</button>
-        <button class="btn btn-sm" id="import-json" style="flex:1">导入</button>
-        <button class="btn btn-sm" id="copy-clip">📋</button>
+        <button class="btn btn-sm" id="export-json" style="flex:1">JSON 导出</button>
+        <button class="btn btn-sm" id="import-json" style="flex:1">JSON 导入</button>
+        <button class="btn btn-sm" id="copy-clip" style="flex:1">📋 复制</button>
       </div>
     </div>
   </aside>
@@ -189,22 +173,22 @@
     <ol class="wizard-steps">
       <li class="wizard-step" data-step="1">
         <span class="ws-num">1</span>
-        <div class="ws-body"><div class="ws-label">框选图案与图例</div><div class="ws-hint">橙=图案 · 蓝=用量统计，把数字框外围全框好</div></div>
+        <div class="ws-body"><div class="ws-label">框选 + 调格子</div><div class="ws-hint">橙=图案+编号圈 · 蓝=用量统计；用 −/+ 调格子数，让黑虚线贴住图纸格子</div></div>
         <span class="ws-state" id="ws-state-1"></span>
       </li>
       <li class="wizard-step" data-step="2">
         <span class="ws-num">2</span>
-        <div class="ws-body"><div class="ws-label">确定长宽</div><div class="ws-hint">自动读出，可手动改</div></div>
+        <div class="ws-body"><div class="ws-label">采样点偏移</div><div class="ws-hint">把红点从格内色号字上移开，落到纯色区域</div></div>
         <span class="ws-state" id="ws-state-2"></span>
       </li>
       <li class="wizard-step" data-step="3">
         <span class="ws-num">3</span>
-        <div class="ws-body"><div class="ws-label">背景清除</div><div class="ws-hint">点格子切换背景/恢复</div></div>
+        <div class="ws-body"><div class="ws-label">背景清除</div><div class="ws-hint">点格子切换背景/恢复，抹掉白底和编号圈</div></div>
         <span class="ws-state" id="ws-state-3"></span>
       </li>
       <li class="wizard-step" data-step="4">
         <span class="ws-num">4</span>
-        <div class="ws-body"><div class="ws-label">确定图纸</div><div class="ws-hint">最大颜色数 + 完成</div></div>
+        <div class="ws-body"><div class="ws-label">确定图纸</div><div class="ws-hint">可设最大颜色数（0=不限），点「完成」退出</div></div>
         <span class="ws-state" id="ws-state-4"></span>
       </li>
     </ol>
@@ -216,21 +200,10 @@
 
   <!-- ==================== Canvas ==================== -->
   <main class="canvas-area" id="canvas-area">
+    <div id="scroll-pad">
     <div id="canvas-wrap">
       <canvas id="preview-canvas" width="400" height="280"></canvas>
       <canvas id="grid-canvas" style="position:absolute;inset:0;pointer-events:none"></canvas>
-      <div id="crop-overlay" style="display:none;position:absolute;inset:0">
-        <div class="crop-mask" id="crop-mask-t"></div>
-        <div class="crop-mask" id="crop-mask-b"></div>
-        <div class="crop-mask" id="crop-mask-l"></div>
-        <div class="crop-mask" id="crop-mask-r"></div>
-        <div class="crop-box" id="crop-box">
-          <div class="crop-h" data-edge="tl"></div><div class="crop-h" data-edge="tr"></div>
-          <div class="crop-h" data-edge="bl"></div><div class="crop-h" data-edge="br"></div>
-          <div class="crop-h" data-edge="t"></div><div class="crop-h" data-edge="b"></div>
-          <div class="crop-h" data-edge="l"></div><div class="crop-h" data-edge="r"></div>
-        </div>
-      </div>
       <div id="frame-overlay" style="display:none;position:absolute;inset:0">
         <div class="frame-box frame-pattern" id="frame-pattern">
           <span class="frame-label" id="frame-pattern-label">图案内容</span>
@@ -247,6 +220,7 @@
           <div class="frame-h" data-box="legend" data-edge="l"></div><div class="frame-h" data-box="legend" data-edge="r"></div>
         </div>
       </div>
+    </div>
     </div>
     <div class="zoom-ctrl">
       <button id="zoom-out">−</button><span id="zoom-label">100%</span>
@@ -320,27 +294,27 @@
       <button class="btn btn-sm" id="help-close">✕ 关闭</button>
     </div>
     <div class="help-body">
-      <h3>🎨 转换模式（照片 → 图纸）</h3>
-      <p>点左上「🎨 转换」，把照片拖进虚线框 / 点「📁 选择文件」/ Ctrl+V 粘贴。设好<b>长宽</b>（格数），程序自动把照片转成拼豆图案。右下「最大颜色数」可在导入时再调。</p>
+      <h3>🖼️ 转换图片（照片 → 图纸）</h3>
+      <p>左上选「🖼️ 转换图片」，把照片拖进虚线框 / 点虚线框 / Ctrl+V 粘贴。在「转换设置」里填<b>长宽</b>（格数），程序自动转成拼豆图案。</p>
 
-      <h3>🔍 导入图纸模式（从成品图纸读色号）</h3>
-      <p>点「🔍 导入图纸」进入 4 步向导：</p>
+      <h3>🔍 导入图纸（成品图纸 → 色号矩阵）</h3>
+      <p>左上选「🔍 导入图纸」，然后拖拽 / 点击 / Ctrl+V 进图，进入 4 步向导：</p>
       <ol>
-        <li><b>框选 + 调格子</b>：橙框框住「图案 + 编号圈」，蓝框框住下方「用量统计」。用 −/+ 调<b>长宽（格数）</b>，让黑色虚线贴到图纸的格子线上；拖框边/角精修位置。</li>
-        <li><b>采样点偏移</b>：每个格子中心有红点（采样点）。用 ↑↓←→ 把红点从格子中间印的<b>色号字</b>上移开，落到纯色区域，点「确认采样」。</li>
-        <li><b>背景清除</b>：点格子可切换「背景 / 恢复」，把白底、编号圈都抹掉，点「确认背景」。</li>
-        <li><b>确定图纸</b>：可设「最大颜色数」（0=不限），相近的颜色会自动合并。点「完成」退出。</li>
+        <li><b>框选 + 调格子</b>：橙框框住「图案 + 编号圈」，蓝框框住下方「用量统计」。用 −/+ 调<b>格子数（长宽）</b>，让黑色虚线贴到图纸的格子线上；拖框边/角精修位置。</li>
+        <li><b>采样点偏移</b>：每个格子中心有红点。用 ↑↓←→ 把红点从格子中间印的<b>色号字</b>上移开，落到纯色区域，点「确认采样」。</li>
+        <li><b>背景清除</b>：点格子切换「背景 / 恢复」，把白底、编号圈都抹掉，点「确认背景」。</li>
+        <li><b>确定图纸</b>：可设「最大颜色数」（0=不限），相近的颜色自动合并。点「完成」退出。</li>
       </ol>
 
-      <h3>📍 辅助定位模式（摆珠子）</h3>
-      <p>切到「📍 辅助」，点「🔄 从转换结果导入」。设<b>板子宽高</b>、<b>红线间距</b>（每几格画一条红线）和<b>起始偏移</b>。屏幕按颜色分批提示，摆完一批点「✅ 下一批」；「🎯 专注」放大只看当前颜色，「↩ 撤销」回退。</p>
+      <h3>📍 辅助定位（摆珠子）</h3>
+      <p>切到「📍 辅助」，点「🔄 从转换结果导入」。设<b>板子宽高</b>、<b>红线间距</b>、<b>起始偏移</b>。按颜色分批提示，摆完一批点「✅ 下一批」；按住批次可上下<b>拖动排序</b>；「🎯 专注」放大只看当前颜色。</p>
 
       <h3>✂️ 常用工具</h3>
       <ul>
-        <li><b>裁剪</b>：切掉边缘；<b>水平/垂直翻转</b>、<b>撤销</b>。</li>
-        <li><b>🧹 背景编辑</b>：导入后点格子批量切换背景。</li>
-        <li><b>💾 保存到仓库</b>：把图纸存到本地（下次可从仓库恢复）。</li>
-        <li><b>导出</b>：下载 PNG / 打印 / JSON 备份。</li>
+        <li><b>水平/垂直翻转</b>、<b>↩ 撤销</b>。</li>
+        <li><b>🧹 背景编辑</b>：点格子批量切换背景/恢复。</li>
+        <li><b>💾 保存到仓库</b>：把图纸存到本地（localStorage），刷新后依然在。</li>
+        <li><b>导出</b>：下载 PNG / 打印 / JSON 备份 / 复制到剪贴板。</li>
         <li><b>🌙</b> 右上角切换明暗主题。</li>
       </ul>
       <p class="help-note">提示：导入时建议用<b>高清原图</b>，格子线更容易对上；改完记得「确认」才生效。</p>
@@ -350,9 +324,7 @@
 
 <script src="js/colormatch.js"></script>
 <script src="js/palettes.js"></script>
-<script src="js/dither.js"></script>
 <script src="js/converter.js"></script>
-<script src="js/resizer.js"></script>
 <script src="js/board.js"></script>
 <script src="js/importer.js"></script>
 <script src="js/assistant.js"></script>

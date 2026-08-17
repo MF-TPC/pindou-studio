@@ -99,6 +99,7 @@ input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2
 
 /* ====== Canvas ====== */
 .canvas-area{flex:1;width:0;overflow:auto;position:relative;background:var(--bg)}
+#scroll-pad{display:flex;align-items:center;justify-content:center;min-width:100%;min-height:100%;padding:45vh 45vw;box-sizing:content-box}
 #canvas-wrap{display:inline-block;box-shadow:var(--sh);border-radius:var(--r)}
 #preview-canvas{display:block;background:#fff}
 #preview-canvas.empty{opacity:.4}
@@ -154,6 +155,7 @@ input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2
 .batch-ov-item{display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:11px;border-radius:var(--r)}
 .batch-ov-completed{opacity:.45;text-decoration:line-through}
 .batch-ov-current{background:rgba(0,210,60,.06);font-weight:600}
+.bo-drop-target{box-shadow:0 0 0 2px var(--pri) inset}
 .bo-swatch{width:12px;height:12px;border-radius:2px;border:1px solid rgba(0,0,0,.08);flex-shrink:0}
 .bo-count{color:var(--dim);font-size:10px;margin-left:auto}
 .bo-arrows{display:flex;gap:1px;margin-left:4px}

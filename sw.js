@@ -4,16 +4,14 @@
  * 只缓存同源资源；跨域资源(CDN/OCR模型等)直接放行，避免干扰 OCR 模型下载。
  */
 
-var CACHE = 'pindou-v2';
+var CACHE = 'pindou-v3';
 var ASSETS = [
   './',
   'index.html',
   'css/style.css',
   'js/colormatch.js',
   'js/palettes.js',
-  'js/dither.js',
   'js/converter.js',
-  'js/resizer.js',
   'js/board.js',
   'js/importer.js',
   'js/assistant.js',
