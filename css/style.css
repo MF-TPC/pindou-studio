@@ -103,7 +103,7 @@ input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2
 #canvas-wrap{display:inline-block;box-shadow:var(--sh);border-radius:var(--r)}
 #preview-canvas{display:block;background:#fff}
 #preview-canvas.empty{opacity:.4}
-.zoom-ctrl{position:absolute;bottom:10px;right:10px;display:flex;gap:2px;background:var(--surf);border-radius:var(--r);box-shadow:var(--sh);padding:2px}
+.zoom-ctrl{display:flex;align-items:center;gap:2px;background:var(--surf);border:1px solid var(--bor);border-radius:var(--r);padding:2px;flex-shrink:0}
 .zoom-ctrl button{width:30px;height:30px;border:none;background:transparent;border-radius:3px;font-size:14px;color:var(--txt);display:flex;align-items:center;justify-content:center;cursor:pointer}
 .zoom-ctrl button:hover{background:var(--bg)}
 #zoom-label{font-size:10px;color:var(--dim);padding:0 3px;display:flex;align-items:center;min-width:36px;justify-content:center}
@@ -284,7 +284,10 @@ input:focus,select:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 2
   .panel-toggle{display:flex}
   .panel-left.collapsed,.panel-right.collapsed{width:0;min-width:0;padding:0;overflow:hidden;border:none}
   .btn,.mode-tab,select,input{min-height:34px}
-  .zoom-ctrl button{width:36px;height:36px}
+}
+/* 触屏设备(手机/平板)用双指缩放即可，隐藏顶部缩放按钮 */
+@media(pointer:coarse){
+  .zoom-ctrl{display:none}
 }
 @media(max-width:768px){
   :root{--pw:100%}
